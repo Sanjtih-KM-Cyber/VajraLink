@@ -1,10 +1,12 @@
+
 import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import DashboardView from './DashboardView';
 import OperativesView from './OperativesView';
 import ThreatsView from './ThreatsView';
+import ConnectionRequestsView from './ConnectionRequestsView';
 
-export type HqView = 'dashboard' | 'operatives' | 'threats' | 'broadcast' | 'settings';
+export type HqView = 'dashboard' | 'operatives' | 'threats' | 'connectionRequests' | 'settings';
 
 interface HqLayoutProps {
     onLogout: () => void;
@@ -21,6 +23,8 @@ const HqLayout: React.FC<HqLayoutProps> = ({ onLogout }) => {
                 return <OperativesView />;
             case 'threats':
                 return <ThreatsView />;
+            case 'connectionRequests':
+                return <ConnectionRequestsView />;
             default:
                 return <DashboardView setView={setView} />;
         }

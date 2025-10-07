@@ -1,9 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar, { ChatInfo, DmChatInfo } from './Sidebar';
 import ChatScreen from './ChatScreen';
 import UserInfoPanel from './UserInfoPanel';
+import GroupInfoPanel from './GroupInfoPanel'; // Import the new component
+import { getContactsForUser, getGroupsForUser, getOperatives } from '../hq/api';
+import { Operative, Group } from '../common/types';
 
 type Theme = 'light' | 'dark';
+
+// In a real app, this would come from the auth context
+const CURRENT_USER = 'agent_zero';
 
 const SettingsMenu: React.FC<{
     isOpen: boolean;
@@ -60,42 +66,33 @@ const SettingsMenu: React.FC<{
     );
 };
 
+const groupToChatInfo = (group: Group): ChatInfo => ({
+    id: group.id,
+    name: group.name,
+    type: 'Encrypted Channel',
+    icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={group.icon} /></svg>,
+});
 
-const INITIAL_CHATS: ChatInfo[] = [
-    {
-        id: 'alpha',
-        name: 'Alpha Group',
-        type: 'Encrypted Channel',
-        icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.084-1.28-.24-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.084-1.28.24-1.857m11.52 1.857a3 3 0 00-5.356-1.857m0 0A3 3 0 017 16.143m5.657 1.857l-2.829-5.657a3 3 0 015.657 0l-2.829 5.657z" /></svg>,
-    },
-    {
-        id: 'work',
-        name: 'Project Condor',
-        type: 'Work Group',
-        icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>,
-    }
-];
+const operativeToDmChatInfo = (operative: Operative): DmChatInfo => {
+    const nameParts = operative.name.split(' ');
+    const initials = nameParts.length > 1 
+        ? `${nameParts[0][0]}${nameParts[1][0]}`
+        : operative.name.substring(0, 2).toUpperCase();
+    
+    const colorClasses = ['bg-indigo-500', 'bg-pink-500', 'bg-purple-500', 'bg-green-500', 'bg-yellow-500'];
+    const colorIndex = operative.name.length % colorClasses.length;
 
-const INITIAL_DMS: DmChatInfo[] = [
-    {
-        id: 'dm-sarah',
-        name: 'Sarah Jenkins',
+    return {
+        id: operative.id,
+        name: operative.name,
         type: 'Direct Message',
-        icon: <div className="h-6 w-6 rounded-full bg-indigo-500 flex items-center justify-center text-sm font-bold text-white">SJ</div>,
-        rank: 'Lead Analyst',
-        status: 'Online',
-        joinDate: '2022-08-15',
-    },
-    {
-        id: 'dm-mike',
-        name: 'Mike Chen',
-        type: 'Direct Message',
-        icon: <div className="h-6 w-6 rounded-full bg-pink-500 flex items-center justify-center text-sm font-bold text-white">MC</div>,
-        rank: 'Field Agent',
-        status: 'Away',
-        joinDate: '2023-01-20',
-    }
-];
+        icon: <div className={`h-6 w-6 rounded-full ${colorClasses[colorIndex]} flex items-center justify-center text-sm font-bold text-white`}>{initials}</div>,
+        rank: operative.rank,
+        status: operative.status,
+        joinDate: operative.joinDate,
+    };
+};
+
 
 interface DashboardProps {
   onScreenshotAttempt: () => void;
@@ -107,14 +104,41 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = (props) => {
-  const [chats, setChats] = useState<ChatInfo[]>(INITIAL_CHATS);
-  const [dms] = useState<DmChatInfo[]>(INITIAL_DMS);
-  const [selectedChat, setSelectedChat] = useState<ChatInfo | DmChatInfo>(chats[0]);
+  const [chats, setChats] = useState<ChatInfo[]>([]);
+  const [dms, setDms] = useState<DmChatInfo[]>([]);
+  const [selectedChat, setSelectedChat] = useState<ChatInfo | DmChatInfo | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isUserInfoPanelOpen, setUserInfoPanelOpen] = useState(false);
+  const [isGroupInfoPanelOpen, setGroupInfoPanelOpen] = useState(false);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [complaintCount, setComplaintCount] = useState(0);
   const [showHqAlert, setShowHqAlert] = useState(false);
+  
+  const loadInitialData = useCallback(async () => {
+      const [userGroups, userContacts] = await Promise.all([
+          getGroupsForUser(CURRENT_USER),
+          getContactsForUser(CURRENT_USER)
+      ]);
+
+      const groupChats = userGroups.map(groupToChatInfo);
+      const dmChats = userContacts.map(operativeToDmChatInfo);
+      
+      setChats(groupChats);
+      setDms(dmChats);
+      
+      if (!selectedChat) {
+        setSelectedChat(groupChats[0] || dmChats[0] || null);
+      } else {
+        // Reselect chat to get fresh data if needed, or just update the lists
+        const newSelected = [...groupChats, ...dmChats].find(c => c.id === selectedChat.id);
+        setSelectedChat(newSelected || groupChats[0] || dmChats[0] || null);
+      }
+  }, [selectedChat]);
+
+
+  useEffect(() => {
+    loadInitialData();
+  }, []);
 
   useEffect(() => {
     const preventRightClick = (e: MouseEvent) => e.preventDefault();
@@ -156,9 +180,25 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
   const handleSelectChat = (chat: ChatInfo | DmChatInfo) => {
     setSelectedChat(chat);
     setUserInfoPanelOpen(false);
+    setGroupInfoPanelOpen(false);
+  };
+  
+  const handleHeaderClick = () => {
+      if (!selectedChat) return;
+      if (selectedChat.type === 'Direct Message') {
+          setUserInfoPanelOpen(true);
+      }
+      if (selectedChat.type === 'Encrypted Channel') {
+          setGroupInfoPanelOpen(true);
+      }
   };
 
-  const selectedDmInfo = selectedChat.type === 'Direct Message' ? selectedChat as DmChatInfo : undefined;
+  const selectedDmInfo = selectedChat?.type === 'Direct Message' ? selectedChat as DmChatInfo : undefined;
+
+  if (!selectedChat) {
+    // Render a loading state or placeholder
+    return <div className="flex h-screen items-center justify-center bg-gray-950 text-white">Loading Dashboard...</div>;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden relative">
@@ -171,6 +211,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         onToggle={toggleSidebar}
         onToggleSettings={() => setSettingsOpen(!isSettingsOpen)}
         activeChatId={selectedChat.id}
+        currentUser={CURRENT_USER}
       />
       <SettingsMenu {...props} isOpen={isSettingsOpen} onClose={() => setSettingsOpen(false)} />
       <div 
@@ -184,11 +225,20 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         <ChatScreen 
           key={selectedChat.id}
           chatInfo={selectedChat}
-          onHeaderClick={() => selectedChat.type === 'Direct Message' && setUserInfoPanelOpen(true)}
+          onHeaderClick={handleHeaderClick}
           onReportFiled={handleReportFiled}
         />
         {isUserInfoPanelOpen && selectedDmInfo && (
             <UserInfoPanel user={selectedDmInfo} onClose={() => setUserInfoPanelOpen(false)} />
+        )}
+        {isGroupInfoPanelOpen && selectedChat && (
+            <GroupInfoPanel 
+                chatInfo={selectedChat} 
+                currentUser={CURRENT_USER}
+                onClose={() => setGroupInfoPanelOpen(false)}
+                onGroupUpdate={loadInitialData}
+                onSelectChat={setSelectedChat}
+            />
         )}
       </div>
       {showHqAlert && (

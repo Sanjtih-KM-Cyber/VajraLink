@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { getOperatives } from '../api';
-import { Operative } from '../types';
+import { Operative } from '../../common/types';
 
 const OperativesView: React.FC = () => {
     const [operatives, setOperatives] = useState<Operative[]>([]);

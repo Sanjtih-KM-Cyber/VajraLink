@@ -1,18 +1,15 @@
-
-
 import React, { useState, useEffect } from 'react';
-// FIX: HqView is exported from HqLayout.tsx, not App.tsx. Corrected the import path.
 import { HqView } from './HqLayout';
-import { getDashboardStats, getRecentThreats } from '../api';
-import { DashboardStats, Threat } from '../types';
+import { getDashboardStats, getRecentThreats, getPendingRegistrations, approveRegistration, denyRegistration } from '../api';
+import { DashboardStats, Threat, PendingRegistration } from '../../common/types';
 
 const StatCard: React.FC<{ title: string; value: string | number; trend?: string; icon: React.ReactElement; isLoading: boolean; }> = ({ title, value, trend, icon, isLoading }) => (
     <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
         <div className="flex items-center justify-between">
             {isLoading ? (
                 <div className="w-full">
-                    <div className="h-4 bg-gray-700 rounded w-3/4 mb-2"></div>
-                    <div className="h-8 bg-gray-700 rounded w-1/2"></div>
+                    <div className="h-4 bg-gray-700 rounded w-3/4 mb-2 animate-pulse"></div>
+                    <div className="h-8 bg-gray-700 rounded w-1/2 animate-pulse"></div>
                 </div>
             ) : (
                 <div>
@@ -29,25 +26,45 @@ const StatCard: React.FC<{ title: string; value: string | number; trend?: string
 const DashboardView: React.FC<{setView: (view: HqView) => void}> = ({ setView }) => {
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [recentThreats, setRecentThreats] = useState<Threat[]>([]);
+    const [pending, setPending] = useState<PendingRegistration[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            setIsLoading(true);
-            const [statsData, threatsData] = await Promise.all([
+    const fetchData = async () => {
+        setIsLoading(true);
+        try {
+            const [statsData, threatsData, pendingData] = await Promise.all([
                 getDashboardStats(),
-                getRecentThreats(2)
+                getRecentThreats(2),
+                getPendingRegistrations(),
             ]);
             setStats(statsData);
             setRecentThreats(threatsData);
+            setPending(pendingData);
+        } catch (error) {
+            console.error("Failed to fetch dashboard data:", error);
+        } finally {
             setIsLoading(false);
-        };
+        }
+    };
+
+    useEffect(() => {
         fetchData();
     }, []);
+    
+    const handleApprove = async (username: string) => {
+        await approveRegistration(username);
+        fetchData(); // Refetch all data to update the dashboard
+    };
+
+    const handleDeny = async (username: string) => {
+        await denyRegistration(username);
+        setPending(current => current.filter(p => p.username !== username));
+    };
+
 
     const getThreatIcon = (threat: Threat) => {
         const iconClasses = "h-5 w-5 text-white";
-        if (threat.type.toLowerCase().includes('phishing')) {
+        if (threat.type.toLowerCase().includes('phishing') || threat.type.toLowerCase().includes('duress')) {
             return <span className="h-8 w-8 rounded-full bg-red-500 flex items-center justify-center ring-8 ring-gray-800"><svg xmlns="http://www.w3.org/2000/svg" className={iconClasses} viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 3.01-1.742 3.01H4.42c-1.53 0-2.493-1.676-1.743-3.01l5.58-9.92zM10 13a1 1 0 110-2 1 1 0 010 2zm-1-8a1 1 0 011-1h.008a1 1 0 011 1v3.5a1 1 0 01-2 0V5z" clipRule="evenodd" /></svg></span>;
         }
         return <span className="h-8 w-8 rounded-full bg-yellow-500 flex items-center justify-center ring-8 ring-gray-800"><svg xmlns="http://www.w3.org/2000/svg" className={iconClasses} viewBox="0 0 20 20" fill="currentColor"><path d="M5.5 16a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 16h-8z" /></svg></span>;
@@ -73,14 +90,21 @@ const DashboardView: React.FC<{setView: (view: HqView) => void}> = ({ setView })
                     </div>
                 </div>
                 <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 flex flex-col">
-                     <h2 className="font-bold text-white text-lg mb-4">Pending Requests</h2>
-                     <div className="flex-1 space-y-4">
-                        <div className="bg-gray-900 p-4 rounded-lg">
-                            <p className="text-xs text-gray-400">New Group Request</p>
-                            <p className="font-semibold text-white mt-1">Create "Family" Group</p>
-                            <p className="text-sm text-gray-300">From: agent_zero</p>
-                            <button className="mt-3 w-full text-sm bg-teal-600 hover:bg-teal-500 text-white font-semibold py-2 px-4 rounded-lg">Approve</button>
-                        </div>
+                     <h2 className="font-bold text-white text-lg mb-4">Pending Approvals</h2>
+                     <div className="flex-1 space-y-4 overflow-y-auto">
+                        {isLoading ? <p>Loading requests...</p> : pending.length > 0 ? (
+                            pending.map(req => (
+                                <div key={req.username} className="bg-gray-900 p-4 rounded-lg">
+                                    <p className="text-xs text-gray-400">New Operative Request</p>
+                                    <p className="font-semibold text-white mt-1">{req.username}</p>
+                                    <p className="text-sm text-gray-300">{req.rank}, {req.unit}</p>
+                                    <div className="mt-3 flex gap-2">
+                                        <button onClick={() => handleApprove(req.username)} className="flex-1 text-sm bg-teal-600 hover:bg-teal-500 text-white font-semibold py-2 px-2 rounded-lg">Approve</button>
+                                        <button onClick={() => handleDeny(req.username)} className="flex-1 text-sm bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-2 rounded-lg">Deny</button>
+                                    </div>
+                                </div>
+                            ))
+                        ) : <p className="text-sm text-gray-400">No pending approvals.</p>}
                      </div>
                 </div>
             </div>

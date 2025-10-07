@@ -60,7 +60,7 @@ const LoginView: React.FC<{onSwitchView: (v: AuthView) => void; onLoginSuccess: 
         e.preventDefault();
         setStatus('loading');
         setError('');
-        const result = await login(username, password);
+        const result = await login(username, password, 'admin');
         if (result.success) {
             setStatus('success');
             setTimeout(onLoginSuccess, 500);

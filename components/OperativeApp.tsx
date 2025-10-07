@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Dashboard from './Dashboard';
 import AppLockScreen from './AppLockScreen';
@@ -10,7 +12,8 @@ const OperativeApp: React.FC = () => {
   const [showScreenshotWarning, setShowScreenshotWarning] = useState(false);
   const [theme, setTheme] = useState<Theme>('dark');
   const [inactivityDuration, setInactivityDuration] = useState(2 * 60 * 1000); // Default 2 minutes
-  const inactivityTimer = useRef<number>();
+  // FIX: Initialize useRef with null. The 'useRef' hook requires an initial value.
+  const inactivityTimer = useRef<any>(null);
 
   const handleLock = useCallback(() => {
     if (appStatus === 'authenticated') {

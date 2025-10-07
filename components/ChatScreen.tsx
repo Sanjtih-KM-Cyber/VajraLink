@@ -1,40 +1,91 @@
+
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatInfo, DmChatInfo } from './Sidebar';
+import { Message } from '../common/types';
 
-interface Message {
-  id: number;
-  text: string;
-  sender: 'user' | 'other';
-  timestamp: string;
-  replyingTo?: Message;
-  attachment?: {
-    type: 'image' | 'video' | 'voicenote' | 'file';
-    url?: string;
-    duration?: string;
-    fileName?: string;
-    fileSize?: string;
-  };
-}
+// --- New "Weird" Encryption/Decryption ---
+const CIPHER_CONFIG = {
+  // Codeword (UI) : Internal Key (for algorithm)
+  'STORMFRONT': 'AEGIS-7',
+  'ECHO-NIGHT': 'PROMETHEUS',
+  'VOID-WALKER': 'CYGNUS-X1',
+  'ZERO-SHIFT': 'ENIGMA-IV'
+};
+const CIPHER_CODEWORDS = Object.keys(CIPHER_CONFIG);
+const INTERNAL_CIPHER_KEYS = Object.values(CIPHER_CONFIG);
 
-const CODEWORD_MAP: Record<string, string> = {
-    'mission': 'project delivery',
-    'rendezvous': 'meetup',
-    'intel': 'the report',
-    'asset': 'our client',
-    'classified': 'for internal use',
-    'battalion': 'the team',
-    'coordinates': 'the location',
-    'extraction': 'pickup',
-    'target': 'the objective',
-    'secret': 'private',
-    'top secret': 'highly confidential',
-    'weapon': 'equipment',
-    'agent': 'consultant',
-    'opsec': 'security policy',
-    'comms': 'channels'
+// A simple seedable PRNG for deterministic "randomness"
+const simpleHash = (str: string): number => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0; // Convert to 32bit integer
+  }
+  return Math.abs(hash);
 };
 
-const REVERSE_CODEWORD_MAP = Object.fromEntries(Object.entries(CODEWORD_MAP).map(([key, value]) => [value, key]));
+const weirderEncrypt = (text: string, internalKey: string): string => {
+  if (!text || !internalKey) return text;
+  const seed = simpleHash(internalKey);
+  // 1. Character code shift
+  let shifted = '';
+  for (let i = 0; i < text.length; i++) {
+    const shift = (seed + i) % 15;
+    shifted += String.fromCharCode(text.charCodeAt(i) + shift + 1); // +1 to avoid null chars
+  }
+  // 2. Inject symbols
+  let withSymbols = '';
+  const symbols = ['✧', '‡', '⬡', '⬢', '⬣', '⬙'];
+  for (let i = 0; i < shifted.length; i++) {
+    withSymbols += shifted[i];
+    if ((seed + i) % 4 === 0) {
+      withSymbols += symbols[(seed + i) % symbols.length];
+    }
+  }
+  // 3. Base64 encode
+  try {
+    return btoa(encodeURIComponent(withSymbols));
+  } catch (e) {
+    console.error("Encryption failed:", e);
+    return text;
+  }
+};
+
+const isPrintable = (str: string) => /^[\x20-\x7E\n\r\t]+$/.test(str);
+
+const weirderDecrypt = (encrypted: string): string => {
+    // Attempt to decrypt with each known internal key
+    for (const internalKey of INTERNAL_CIPHER_KEYS) {
+        try {
+            // 1. Base64 decode
+            const decodedB64 = decodeURIComponent(atob(encrypted));
+            // 2. Remove symbols
+            const symbols = ['✧', '‡', '⬡', '⬢', '⬣', '⬙'];
+            const symbolRegex = new RegExp(`[${symbols.join('')}]`, 'g');
+            const withoutSymbols = decodedB64.replace(symbolRegex, '');
+            // 3. Reverse character code shift
+            const seed = simpleHash(internalKey);
+            let originalText = '';
+            for (let i = 0; i < withoutSymbols.length; i++) {
+                const shift = (seed + i) % 15;
+                originalText += String.fromCharCode(withoutSymbols.charCodeAt(i) - shift - 1);
+            }
+            // 4. Sanity check: if the result is printable, we likely found the right key
+            if (isPrintable(originalText) || originalText.length === 0) {
+              return originalText;
+            }
+        } catch (e) {
+            // This key failed, continue to the next one
+            continue;
+        }
+    }
+    // If no key worked, fail
+    return "DECRYPTION FAILED: DATA CORRUPTED OR UNKNOWN CIPHER";
+};
+
 
 const MOCK_MESSAGES: Record<string, Message[]> = {
   'alpha': [
@@ -47,6 +98,7 @@ const MOCK_MESSAGES: Record<string, Message[]> = {
   ],
   'work': [
     { id: 1, text: "The new wireframes for Project Condor are ready for review.", sender: 'other', timestamp: "9:05 AM" },
+    { id: 2, text: "VyNTVklUVVZKVERWJVNLVFMlQiVXVlZJJVVLJSVRViVSS1ZKJVUklVElVkolQislQyVRViVRSyVCJVVLJSVSSyVRViVVKiVRSyVSSyVCJVdLVkklQyUwMiVCJTNGJTEy", sender: 'user', timestamp: "11:56 PM" }
   ],
   'dm-sarah': [
     { id: 1, text: "Hey, are you free for a quick sync-up call at 3?", sender: 'other', timestamp: "1:30 PM" },
@@ -57,15 +109,51 @@ const MOCK_MESSAGES: Record<string, Message[]> = {
   ]
 };
 
+const MOCK_DURESS_MESSAGES: Record<string, Message[]> = {
+  'alpha': [
+    { id: 1, text: "Morning team. Just confirming the 10am quarterly review is still on.", sender: 'other', timestamp: "8:30 AM" },
+    { id: 2, text: "Yep, I'm all set. Dialing in shortly.", sender: 'user', timestamp: "8:31 AM" },
+    { id: 3, text: "Traffic was bad, I'll be 5 minutes late.", sender: 'other', timestamp: "9:55 AM" },
+  ],
+  'family': [
+    { id: 1, text: "The weather is looking nice this weekend.", sender: 'other', timestamp: "2:15 PM" },
+    { id: 2, text: "Agreed. Let's plan on that barbecue.", sender: 'user', timestamp: "2:16 PM" },
+  ],
+  'work': [
+    { id: 1, text: "Can you resend the agenda for the marketing sync?", sender: 'other', timestamp: "9:05 AM" },
+    { id: 2, text: "Just forwarded it to you.", sender: 'user', timestamp: "9:06 AM" }
+  ],
+  'dm-sarah': [
+    { id: 1, text: "Hey, just a reminder about the budget meeting at 2.", sender: 'other', timestamp: "1:30 PM" },
+    { id: 2, text: "Thanks for the reminder! Almost forgot.", sender: 'user', timestamp: "1:32 PM" },
+  ],
+  'dm-mike': [
+    { id: 1, text: "The forecast says rain tomorrow.", sender: 'other', timestamp: "11:45 AM" },
+  ]
+};
+
 const OPSEC_CHECKS = [
   {
     type: 'keywords',
     patterns: [
-      'classified', 'battalion location', 'rendezvous point', 'secret',
-      'top secret', 'mission start time', 'coordinates', 'intel report', 'asset name',
-      'target', 'extraction', 'weapon', 'agent'
+      // Classification & Security
+      'classified', 'secret', 'top secret', 'opsec', 'compromised', 'burn notice', 'clearance',
+      // Operations & Tactics
+      'mission', 'operation', 'extraction', 'exfil', 'infiltration', 'infil', 'stealth',
+      'surveillance', 'counter-surveillance', 'neutralize', 'target', 'rendezvous', 'asset',
+      // Locations
+      'safe house', 'dead drop', 'command post', 'cp', 'hq', 'headquarters', 'battalion',
+      'grid reference', 'coordinates', 'location', 'rendezvous point',
+      // People & Roles
+      'agent', 'operative', 'handler', 'case officer', 'callsign', 'sniper', 'enemy', 'hostile',
+      'asset name',
+      // Intel & Comms
+      'intel', 'sitrep', 'humint', 'sigint', 'intel report', 'cipher', 'encryption key',
+      'password', 'passphrase', 'frequency', 'comms', 'mission start time',
+      // Equipment
+      'weapon', 'explosive', 'bomb', 'ied', 'device'
     ],
-    getMessage: (match: string) => `DANGER: Direct mention of operational term "${match}". Rephrase immediately or use the encryptor bot.`
+    getMessage: (match: string) => `DANGER: Direct mention of operational term "${match}". Rephrase immediately or use encryption.`
   },
   {
     type: 'regex',
@@ -76,6 +164,11 @@ const OPSEC_CHECKS = [
     type: 'regex',
     patterns: [/\b(?:\+?1[ -]?)?\(?\d{3}\)?[ -.]?\d{3}[ -.]?\d{4}\b/],
     getMessage: (match:string) => `Potential PII detected: Phone number ("${match}"). Avoid sending personal contact information.`
+  },
+  {
+    type: 'regex',
+    patterns: [/\b\d{1,2}[A-Z]{3}\s?\d{4,10}\b/i],
+    getMessage: (match: string) => `CRITICAL: Military Grid Reference ("${match}") detected. Use secure methods for coordinate sharing.`
   }
 ];
 
@@ -189,6 +282,7 @@ const OpsecBotScreen: React.FC<{chatInfo: ChatInfo; onReportFiled: () => void;}>
         <div className="flex flex-col h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-white">
             <header className="flex items-center p-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 h-[73px]">
                 <div className="flex items-center">
+                    {/* FIX: Pass props as the second argument to React.cloneElement */}
                     {React.cloneElement(chatInfo.icon, { className: "h-8 w-8 text-teal-400 mr-3" })}
                     <div>
                         <h1 className="text-xl font-bold text-gray-900 dark:text-white">{chatInfo.name}</h1>
@@ -255,25 +349,56 @@ const OpsecBotScreen: React.FC<{chatInfo: ChatInfo; onReportFiled: () => void;}>
     );
 };
 
-const VoiceNotePlayer: React.FC<{ duration: string }> = ({ duration }) => {
+const formatTime = (seconds: number) => {
+    if (isNaN(seconds)) return '00:00';
+    const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+};
+
+const VoiceNotePlayer: React.FC<{ blobUrl: string }> = ({ blobUrl }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const intervalRef = useRef<number | null>(null);
 
-    const togglePlay = () => {
-        setIsPlaying(!isPlaying);
-        // This is a simulation, so we'll just fake the progress
-        if (!isPlaying) {
-            const interval = setInterval(() => {
-                setProgress(p => {
-                    if (p >= 100) {
-                        clearInterval(interval);
-                        setIsPlaying(false);
-                        return 0;
-                    }
-                    return p + 10;
-                });
-            }, 150);
+    useEffect(() => {
+        audioRef.current = new Audio(blobUrl);
+        const audio = audioRef.current;
+        
+        const handleMetadata = () => setDuration(audio.duration);
+        const handleEnded = () => {
+            setIsPlaying(false);
+            setProgress(0);
+        };
+
+        audio.addEventListener('loadedmetadata', handleMetadata);
+        audio.addEventListener('ended', handleEnded);
+
+        return () => {
+            audio.removeEventListener('loadedmetadata', handleMetadata);
+            audio.removeEventListener('ended', handleEnded);
+            if (intervalRef.current) clearInterval(intervalRef.current);
+        };
+    }, [blobUrl]);
+
+    const updateProgress = () => {
+        if (audioRef.current) {
+            setProgress((audioRef.current.currentTime / audioRef.current.duration) * 100);
         }
+    };
+    
+    const togglePlay = () => {
+        if (!audioRef.current) return;
+        if (isPlaying) {
+            audioRef.current.pause();
+            if (intervalRef.current) clearInterval(intervalRef.current);
+        } else {
+            audioRef.current.play();
+            intervalRef.current = window.setInterval(updateProgress, 100);
+        }
+        setIsPlaying(!isPlaying);
     };
 
     return (
@@ -284,7 +409,7 @@ const VoiceNotePlayer: React.FC<{ duration: string }> = ({ duration }) => {
             <div className="w-full bg-black/30 rounded-full h-1.5">
                 <div className="bg-teal-300 h-1.5 rounded-full" style={{ width: `${progress}%` }}></div>
             </div>
-            <span className="text-xs text-teal-200/80">{duration}</span>
+            <span className="text-xs text-teal-200/80">{formatTime(duration)}</span>
         </div>
     );
 };
@@ -308,31 +433,87 @@ const FileAttachment: React.FC<{ fileName: string, fileSize: string }> = ({ file
 
 const CallScreen: React.FC<{ user: ChatInfo | DmChatInfo; type: 'video' | 'voice'; onEnd: () => void; }> = ({ user, type, onEnd }) => {
     const [timer, setTimer] = useState(0);
-    useEffect(() => {
-        const interval = setInterval(() => setTimer(t => t + 1), 1000);
-        return () => clearInterval(interval);
-    }, []);
+    const [isMuted, setIsMuted] = useState(false);
+    const [isCameraOff, setIsCameraOff] = useState(type === 'voice');
+    
+    const localStreamRef = useRef<MediaStream | null>(null);
+    const localVideoRef = useRef<HTMLVideoElement>(null);
+    const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-        const secs = (seconds % 60).toString().padStart(2, '0');
-        return `${mins}:${secs}`;
+    useEffect(() => {
+        const callTimer = setInterval(() => setTimer(t => t + 1), 1000);
+
+        const startMedia = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: type === 'video',
+                    audio: true,
+                });
+                localStreamRef.current = stream;
+                if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+                if (remoteVideoRef.current) remoteVideoRef.current.srcObject = stream; // Loopback for simulation
+            } catch (err) {
+                console.error("Error accessing media devices.", err);
+                alert("Could not access camera or microphone. Please check permissions.");
+                onEnd();
+            }
+        };
+        startMedia();
+
+        return () => {
+            clearInterval(callTimer);
+            localStreamRef.current?.getTracks().forEach(track => track.stop());
+        };
+    }, [type, onEnd]);
+
+    const toggleMute = () => {
+        localStreamRef.current?.getAudioTracks().forEach(track => {
+            track.enabled = !track.enabled;
+            setIsMuted(!track.enabled);
+        });
+    };
+    
+    const toggleCamera = () => {
+        if (type === 'voice') return;
+        localStreamRef.current?.getVideoTracks().forEach(track => {
+            track.enabled = !track.enabled;
+            setIsCameraOff(!track.enabled);
+        });
     };
 
     return (
-        <div className="absolute inset-0 bg-gray-900 z-50 flex flex-col items-center justify-between p-8 text-white">
-            <div className="text-center mt-16">
-                <div className="h-24 w-24 rounded-full bg-teal-500 flex items-center justify-center text-4xl font-bold mx-auto ring-4 ring-white/20">
-                    {user.name.split(' ').map(n => n[0]).join('')}
+        <div className="absolute inset-0 bg-gray-900 z-50 flex flex-col items-center justify-between text-white overflow-hidden">
+            {/* Remote Video (main view) */}
+            <video ref={remoteVideoRef} autoPlay playsInline className={`w-full h-full object-cover absolute top-0 left-0 transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`}></video>
+            <div className="absolute inset-0 bg-black/50"></div>
+
+            {/* Local Video (PiP) */}
+            <video ref={localVideoRef} autoPlay muted playsInline className={`w-48 h-32 object-cover absolute top-8 right-8 rounded-lg shadow-2xl border-2 border-white/20 transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`}></video>
+            
+            <div className="relative z-10 flex flex-col items-center justify-between h-full w-full p-8">
+                <div className="text-center mt-16">
+                    <div className="h-24 w-24 rounded-full bg-teal-500 flex items-center justify-center text-4xl font-bold mx-auto ring-4 ring-white/20">
+                        {user.name.split(' ').map(n => n[0]).join('')}
+                    </div>
+                    <h1 className="text-3xl font-bold mt-4">{user.name}</h1>
+                    <p className="text-lg text-gray-300 mt-1">{type === 'video' ? 'Encrypted Video Call' : 'Encrypted Voice Call'}</p>
+                    <p className="text-2xl font-mono mt-4">{formatTime(timer)}</p>
                 </div>
-                <h1 className="text-3xl font-bold mt-4">{user.name}</h1>
-                <p className="text-lg text-gray-300 mt-1">{type === 'video' ? 'Encrypted Video Call' : 'Encrypted Voice Call'}</p>
-                <p className="text-2xl font-mono mt-4">{formatTime(timer)}</p>
-            </div>
-            <div className="flex items-center space-x-6">
-                <button className="p-4 bg-white/10 rounded-full hover:bg-white/20"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></button>
-                <button onClick={onEnd} className="p-5 bg-red-600 rounded-full hover:bg-red-500 shadow-lg"><svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2 2m-2-2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2z" /></svg></button>
-                <button className="p-4 bg-white/10 rounded-full hover:bg-white/20"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg></button>
+
+                <div className="flex items-center space-x-6">
+                    <button onClick={toggleMute} className={`p-4 rounded-full transition-colors ${isMuted ? 'bg-white text-gray-900' : 'bg-white/10 hover:bg-white/20'}`}>
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                    </button>
+                     {type === 'video' && (
+                        <button onClick={toggleCamera} className={`p-4 rounded-full transition-colors ${isCameraOff ? 'bg-white text-gray-900' : 'bg-white/10 hover:bg-white/20'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        </button>
+                     )}
+                    <button onClick={onEnd} className="p-5 bg-red-600 rounded-full hover:bg-red-500 shadow-lg scale-110">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2 2m-2-2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2z" /></svg>
+                    </button>
+                    <button className="p-4 bg-white/10 rounded-full hover:bg-white/20"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg></button>
+                </div>
             </div>
         </div>
     );
@@ -340,7 +521,7 @@ const CallScreen: React.FC<{ user: ChatInfo | DmChatInfo; type: 'video' | 'voice
 
 
 const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onReportFiled }) => {
-  const [messages, setMessages] = useState<Message[]>(MOCK_MESSAGES[chatInfo.id] || []);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [opsecWarning, setOpsecWarning] = useState<string | null>(null);
@@ -349,20 +530,37 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
   const [callInfo, setCallInfo] = useState<{type: 'voice' | 'video' } | null>(null);
   const [decryptedMessage, setDecryptedMessage] = useState<{id: number, text: string} | null>(null);
   const [uploadingFile, setUploadingFile] = useState<{ name: string; progress: number; size: string } | null>(null);
   
+  const [selectedCipher, setSelectedCipher] = useState<string | null>(null);
+  const [showCipherPicker, setShowCipherPicker] = useState(false);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadIntervalRef = useRef<number | null>(null);
+  const cipherPickerRef = useRef<HTMLDivElement>(null);
+  const recordingTimerRef = useRef<number | null>(null);
 
+  useEffect(() => {
+    // Duress Protocol Check
+    const isDuress = sessionStorage.getItem('duressMode') === 'true';
+    const messageSource = isDuress ? MOCK_DURESS_MESSAGES : MOCK_MESSAGES;
+    setMessages(messageSource[chatInfo.id] || []);
+  }, [chatInfo.id]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
         setShowEmojiPicker(false);
+      }
+      if (cipherPickerRef.current && !cipherPickerRef.current.contains(event.target as Node)) {
+        setShowCipherPicker(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -373,27 +571,84 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
   useEffect(() => { setOpsecWarning(analyzeDraft(inputText)); }, [inputText]);
 
   const handleSend = () => {
-    if ((inputText.trim() || replyingTo) && !opsecWarning) {
-      const newMessage: Message = { 
-        id: Date.now(), 
-        text: inputText, 
-        sender: 'user', 
-        timestamp: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-        replyingTo: replyingTo || undefined
-      };
-      setMessages([...messages, newMessage]);
-      setInputText('');
-      setReplyingTo(null);
+    if (!inputText.trim()) return;
+    if (opsecWarning && !selectedCipher) return;
+
+    let textToSend = inputText;
+    if (selectedCipher) {
+        const internalKey = CIPHER_CONFIG[selectedCipher];
+        if (internalKey) {
+            textToSend = weirderEncrypt(inputText, internalKey);
+        }
+    }
+
+    const newMessage: Message = {
+      id: Date.now(),
+      text: textToSend,
+      sender: 'user',
+      timestamp: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+      replyingTo: replyingTo || undefined
+    };
+    setMessages([...messages, newMessage]);
+    setInputText('');
+    setReplyingTo(null);
+    setSelectedCipher(null); // Reset cipher after sending
+  };
+
+  const handleStartRecording = async () => {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorderRef.current = new MediaRecorder(stream);
+        audioChunksRef.current = [];
+        
+        mediaRecorderRef.current.ondataavailable = (event) => {
+            audioChunksRef.current.push(event.data);
+        };
+        
+        mediaRecorderRef.current.onstop = () => {
+            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const duration = recordingTime;
+
+            const newMessage: Message = {
+              id: Date.now(), text: '', sender: 'user', timestamp: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+              attachment: { type: 'voicenote', blobUrl: audioUrl, duration }
+            };
+            setMessages(prev => [...prev, newMessage]);
+            
+            // Clean up stream
+            stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorderRef.current.start();
+        setIsRecording(true);
+        setRecordingTime(0);
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = window.setInterval(() => {
+            setRecordingTime(prev => prev + 1);
+        }, 1000);
+    } catch (err) {
+        console.error("Microphone access denied:", err);
+        alert("Microphone access is required to record voice notes.");
     }
   };
 
-  const handleSendVoiceNote = () => {
+  const handleCancelRecording = () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        mediaRecorderRef.current.stop();
+    }
     setIsRecording(false);
-    const newMessage: Message = {
-      id: Date.now(), text: '', sender: 'user', timestamp: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-      attachment: { type: 'voicenote', url: 'simulated.ogg', duration: '0:12' }
-    };
-    setMessages([...messages, newMessage]);
+    setRecordingTime(0);
+  };
+
+  const handleSendVoiceNote = () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
   };
   
     const cancelUpload = () => {
@@ -466,30 +721,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
   
-    const handleEncrypt = () => {
-        let encryptedText = inputText;
-        const sortedKeys = Object.keys(CODEWORD_MAP).sort((a, b) => b.length - a.length);
-        for (const key of sortedKeys) {
-            const regex = new RegExp(`\\b${key}\\b`, 'gi');
-            encryptedText = encryptedText.replace(regex, CODEWORD_MAP[key]);
-        }
-        setInputText(encryptedText);
-    };
-
     const handleDecrypt = (message: Message) => {
         if (!message.text) return;
-        let decryptedText = message.text;
-        const sortedValues = Object.values(CODEWORD_MAP).sort((a, b) => b.length - a.length);
-        for (const value of sortedValues) {
-            const key = REVERSE_CODEWORD_MAP[value];
-            const regex = new RegExp(`\\b${value}\\b`, 'gi');
-            decryptedText = decryptedText.replace(regex, key);
-        }
+        const decryptedText = weirderDecrypt(message.text);
         
-        if (decryptedText === message.text) {
-            decryptedText = "Message does not contain known codewords.";
-        }
-
         setDecryptedMessage({ id: message.id, text: decryptedText });
         
         const displayTime = Math.max(5000, decryptedText.length * 100);
@@ -512,10 +747,48 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
     </div>
   );
   
+  const SendButton = () => {
+    const isSendDisabled = !inputText.trim() || (!!opsecWarning && !selectedCipher);
+    const isEncryptAction = !!selectedCipher || !!opsecWarning;
+
+    const SendIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>;
+    const LockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>;
+
+    let text = 'Send';
+    let icon = <SendIcon />;
+    let className = 'bg-teal-600 hover:bg-teal-500';
+    let aria = 'Send message';
+    
+    if (isEncryptAction) {
+        text = 'Encrypt & Send';
+        aria = 'Encrypt and send message';
+    }
+    if (opsecWarning) {
+        icon = <LockIcon />;
+        if (selectedCipher) {
+            className = 'bg-yellow-600 hover:bg-yellow-500';
+        } else {
+            text = 'Select Cipher to Send';
+        }
+    }
+    if (isSendDisabled) {
+        className = 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed';
+        aria = opsecWarning ? 'Select a cipher to enable sending' : 'Type a message to send';
+    }
+
+    return (
+        <button onClick={handleSend} disabled={isSendDisabled} className={`px-5 py-2 rounded-lg text-sm font-semibold text-white transition-colors flex items-center ${className}`} aria-label={aria}>
+          {icon}
+          {text}
+        </button>
+    );
+  };
+  
   return (
     <div className="flex flex-col h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-white relative">
       <header className="flex items-center justify-between p-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 h-[73px]">
-        <button onClick={onHeaderClick} className={`flex items-center text-left ${chatInfo.type === 'Direct Message' ? 'cursor-pointer' : 'cursor-default'}`}>
+        <button onClick={onHeaderClick} disabled={chatInfo.type.includes('Bot')} className={`flex items-center text-left ${!chatInfo.type.includes('Bot') ? 'cursor-pointer' : 'cursor-default'}`}>
+            {/* FIX: Pass props as the second argument to React.cloneElement */}
             {React.cloneElement(chatInfo.icon, { className: "h-8 w-8 text-teal-400 mr-3" })}
             <div>
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">{chatInfo.name}</h1>
@@ -551,7 +824,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
             <div key={msg.id} className={`flex items-start ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className="relative" onMouseEnter={() => setHoveredMessageId(msg.id)} onMouseLeave={() => setHoveredMessageId(null)}>
                 {hoveredMessageId === msg.id && <MessageActions msg={msg} />}
-                <div className={`max-w-md p-3 rounded-lg ${msg.sender === 'user' ? 'bg-teal-700 text-white' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white'} shadow relative`} style={{ userSelect: 'none' }} onContextMenu={preventContextMenu}>
+                <div className={`max-w-md p-3 rounded-lg ${msg.sender === 'user' ? 'bg-teal-700 text-white' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white'} shadow relative break-all`} style={{ userSelect: 'none' }} onContextMenu={preventContextMenu}>
                   {msg.replyingTo && (
                     <div className="p-2 mb-2 border-l-2 border-teal-400 bg-black/10 dark:bg-black/20 rounded">
                       <p className={`font-bold text-xs ${msg.sender === 'user' ? 'text-teal-100' : 'text-teal-600 dark:text-teal-300'}`}>{msg.replyingTo.sender === 'user' ? 'You' : chatInfo.name}</p>
@@ -559,21 +832,23 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
                     </div>
                   )}
                   {msg.attachment?.type === 'image' && msg.attachment.url && <img src={msg.attachment.url} alt="attachment" className="rounded-lg max-w-xs mb-2" />}
-                  {msg.attachment?.type === 'voicenote' && <VoiceNotePlayer duration={msg.attachment.duration!} />}
+                  {msg.attachment?.type === 'voicenote' && msg.attachment.blobUrl && <VoiceNotePlayer blobUrl={msg.attachment.blobUrl} />}
                   {msg.attachment?.type === 'file' && <FileAttachment fileName={msg.attachment.fileName!} fileSize={msg.attachment.fileSize!} />}
-                  {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
+                  
+                  {decryptedMessage && decryptedMessage.id === msg.id ? (
+                      <div className="text-left">
+                          <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${msg.sender === 'user' ? 'text-teal-200' : 'text-teal-500'}`}>Decrypted Message</p>
+                          <p className="text-sm whitespace-pre-wrap font-medium">{decryptedMessage.text}</p>
+                          <p className="text-sm whitespace-pre-wrap opacity-50 mt-1">{msg.text}</p>
+                      </div>
+                  ) : (
+                      msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                  )}
+
                   <div className={`flex items-center justify-end mt-1 opacity-80 text-xs ${msg.sender === 'user' ? 'text-teal-200' : 'text-gray-400 dark:text-gray-400'}`}>
                       <span className="mr-2">{msg.timestamp}</span>
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
                   </div>
-                   {decryptedMessage && decryptedMessage.id === msg.id && (
-                        <div className="absolute inset-0 bg-teal-600/95 text-white p-3 rounded-lg flex items-center justify-center z-20">
-                            <div className="text-center">
-                                <p className="text-xs font-bold uppercase tracking-wider mb-2">Decrypted Message</p>
-                                <p className="text-sm font-semibold">{decryptedMessage.text}</p>
-                            </div>
-                        </div>
-                    )}
                 </div>
               </div>
             </div>
@@ -611,12 +886,17 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
         )}
         <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-2">
             {isRecording ? (
-                <div className="flex items-center justify-between p-2">
-                    <div className="flex items-center text-red-500">
+                <div className="flex items-center justify-between h-[68px]">
+                    <button onClick={handleCancelRecording} className="p-2 text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400" aria-label="Cancel recording">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                    </button>
+                    <div className="flex items-center text-red-500 flex-1 justify-center">
                         <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span>
-                        <span className="ml-3 font-mono text-sm">0:07</span>
+                        <span className="ml-3 font-mono text-lg text-gray-800 dark:text-white">{formatTime(recordingTime)}</span>
                     </div>
-                    <button onClick={handleSendVoiceNote} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-teal-600 hover:bg-teal-500">Send</button>
+                    <button onClick={handleSendVoiceNote} className="p-2 bg-teal-600 rounded-full text-white" aria-label="Send voice note">
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
+                    </button>
                 </div>
             ) : (
                 <>
@@ -627,13 +907,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
                 </>
             )}
           <div className="flex justify-between items-center mt-2">
-            <div className="flex items-center space-x-2 text-gray-500 dark:text-gray-400">
+            <div className="flex items-center space-x-1 text-gray-500 dark:text-gray-400">
               <div className="relative">
                 <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-2 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Add emoji">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100-2 1 1 0 000 2zm7-1a1 1 0 11-2 0 1 1 0 012 0zm-.464 5.535a1 1 0 10-1.415-1.414 3 3 0 01-4.242 0 1 1 0 00-1.415 1.414 5 5 0 007.072 0z" clipRule="evenodd" /></svg>
                 </button>
                 {showEmojiPicker && (
-                    <div ref={emojiPickerRef} className="absolute bottom-full mb-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 grid grid-cols-5 gap-2 w-48 shadow-lg">
+                    <div ref={emojiPickerRef} className="absolute bottom-full mb-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 grid grid-cols-5 gap-2 w-48 shadow-lg z-10">
                         {EMOJIS.map(emoji => <button key={emoji} onClick={() => handleEmojiSelect(emoji)} className="text-xl p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">{emoji}</button>)}
                     </div>
                 )}
@@ -642,15 +922,24 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
               <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Attach file">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a3 3 0 10-6 0v4a1 1 0 102 0V7a1 1 0 112 0v4a3 3 0 11-6 0V7a5 5 0 0110 0v4a5 5 0 01-10 0V7a3 3 0 00-3-3z" clipRule="evenodd" /></svg>
               </button>
-              <button onClick={() => setIsRecording(true)} className="p-2 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Record voice note"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" /></svg></button>
-              <button onClick={handleEncrypt} className="p-2 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Encrypt message with codewords">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v1.946l.362.241a1 1 0 01.488 1.308l-.732 1.268a1 1 0 01-1.308.488l-.241-.362V8a1 1 0 01-2 0V5.889l-.241.362a1 1 0 01-1.308-.488l-.732-1.268a1 1 0 01.488-1.308L8 3.946V2a1 1 0 01.7-1.046A4.992 4.992 0 0110 0c.343 0 .682.035 1.01.103.095.013.188.03.28.05.01.002.02.004.03.006.02.004.04.008.06.012.01.002.02.004.03.006.095.02.188.043.28.068zM5 11.3a1 1 0 01-1.046-.7A4.992 4.992 0 014 10c0-.343.035-.682.103-1.01a1 1 0 011.046-.7l1.946.259.241-.362a1 1 0 011.308.488l.732 1.268a1 1 0 01-.488 1.308l-.362.241H8a1 1 0 010 2h1.111l.362.241a1 1 0 01.488 1.308l-.732 1.268a1 1 0 01-1.308.488l-.241-.362-1.946.259A1 1 0 015 11.3zm13.954-.3A1 1 0 0118 12v-1.946l.362-.241a1 1 0 01.488-1.308l-.732-1.268a1 1 0 01-1.308-.488l-.241.362V5a1 1 0 01-2 0v1.111l-.241-.362a1 1 0 01-1.308.488l-.732 1.268a1 1 0 01.488 1.308l.362.241H12a1 1 0 010 2h1.111l.362.241a1 1 0 01.488 1.308l-.732 1.268a1 1 0 01-1.308.488l-.241-.362-.259 1.946a1 1 0 01-1.046.7c.068.328.103.667.103 1.01 0 .343-.035.682-.103 1.01.013.095.03.188.05.28.002.01.004.02.006.03.004.02.008.04.012.06.002.01.004.02.006.03.02.095.043.188.068.28.093.284.19.562.29.832.092.25.19.492.296.728.02.04.04.08.06.12.04.08.08.16.12.24.04.08.09.15.13.23.04.07.09.14.13.21.05.07.1.14.15.21.05.06.1.12.15.18.05.06.1.12.15.18.05.06.1.12.16.17l.16.16a5.002 5.002 0 003.536-1.464 5 5 0 001.464-3.536l-.16-.16z" clipRule="evenodd" /></svg>
-              </button>
+              <button onClick={handleStartRecording} className="p-2 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Record voice note"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" /></svg></button>
+              
+               <div className="relative">
+                <button onClick={() => setShowCipherPicker(!showCipherPicker)} className="p-2 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full" aria-label="Select Cipher Key">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v1.946l.362.241a1 1 0 01.488 1.308l-.732 1.268a1 1 0 01-1.308.488l-.241-.362V8a1 1 0 01-2 0V5.889l-.241.362a1 1 0 01-1.308-.488l-.732-1.268a1 1 0 01.488-1.308L8 3.946V2a1 1 0 01.7-1.046A4.992 4.992 0 0110 0c.343 0 .682.035 1.01.103.095.013.188.03.28.05.01.002.02.004.03.006.02.004.04.008.06.012.01.002.02.004.03.006.095.02.188.043.28.068zM5 11.3a1 1 0 01-1.046-.7A4.992 4.992 0 014 10c0-.343.035-.682.103-1.01a1 1 0 011.046-.7l1.946.259.241-.362a1 1 0 011.308.488l.732 1.268a1 1 0 01-.488 1.308l-.362.241H8a1 1 0 010 2h1.111l.362.241a1 1 0 01.488 1.308l-.732 1.268a1 1 0 01-1.308.488l-.241-.362-1.946.259A1 1 0 015 11.3zm13.954-.3A1 1 0 0118 12v-1.946l.362-.241a1 1 0 01.488-1.308l-.732-1.268a1 1 0 01-1.308-.488l-.241.362V5a1 1 0 01-2 0v1.111l-.241-.362a1 1 0 01-1.308.488l-.732 1.268a1 1 0 01.488 1.308l.362.241H12a1 1 0 010 2h1.111l.362.241a1 1 0 01.488 1.308l-.732 1.268a1 1 0 01-1.308.488l-.241-.362-.259 1.946a1 1 0 01-1.046.7c.068.328.103.667.103 1.01 0 .343-.035.682-.103 1.01.013.095.03.188.05.28.002.01.004.02.006.03.004.02.008.04.012.06.002.01.004.02.006.03.02.095.043.188.068.28.093.284.19.562.29.832.092.25.19.492.296.728.02.04.04.08.06.12.04.08.08.16.12.24.04.08.09.15.13.23.04.07.09.14.13.21.05.07.1.14.15.21.05.06.1.12.15.18.05.06.1.12.15.18.05.06.1.12.16.17l.16.16a5.002 5.002 0 003.536-1.464 5 5 0 001.464-3.536l-.16-.16z" clipRule="evenodd" /></svg>
+                </button>
+                {showCipherPicker && (
+                    <div ref={cipherPickerRef} className="absolute bottom-full mb-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 w-48 shadow-lg z-10">
+                        <p className="text-xs font-semibold text-gray-400 px-2 pb-1 uppercase">Select Cipher Codeword</p>
+                        {CIPHER_CODEWORDS.map(key => <button key={key} onClick={() => { setSelectedCipher(key); setShowCipherPicker(false); }} className={`w-full text-left text-sm p-2 rounded ${selectedCipher === key ? 'bg-teal-600 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}>{key}</button>)}
+                    </div>
+                )}
+              </div>
             </div>
-            <button onClick={handleSend} disabled={!!opsecWarning || !inputText.trim()} className={`px-5 py-2 rounded-lg text-sm font-semibold text-white transition-colors flex items-center ${opsecWarning || !inputText.trim() ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed' : 'bg-teal-600 hover:bg-teal-500'}`} aria-label={opsecWarning ? 'Cannot send message due to OPSEC alert' : 'Send encrypted message'}>
-              {opsecWarning ? <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>}
-              Send
-            </button>
+            <div className="flex items-center space-x-2">
+                {selectedCipher && <span className="text-xs font-mono bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">{selectedCipher}</span>}
+                <SendButton />
+            </div>
           </div>
         </div>
       </footer>

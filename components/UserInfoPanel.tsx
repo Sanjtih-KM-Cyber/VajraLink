@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { DmChatInfo } from './Sidebar';
 
@@ -32,6 +33,7 @@ const UserInfoPanel: React.FC<UserInfoPanelProps> = ({ user, onClose }) => {
         <main className="flex-1 p-6 overflow-y-auto">
           <div className="flex flex-col items-center">
             <div className="relative mb-4">
+              {/* FIX: Pass props as the second argument to React.cloneElement */}
               {React.cloneElement(user.icon, { className: "h-24 w-24 text-5xl" })}
               <span className={`absolute bottom-1 right-1 block h-5 w-5 rounded-full ${statusColor} border-2 border-gray-900`}></span>
             </div>

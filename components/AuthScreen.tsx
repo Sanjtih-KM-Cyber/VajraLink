@@ -5,13 +5,16 @@ import {
     checkUsername,
     getSecurityQuestion,
     submitSecurityAnswer,
-    SECURITY_QUESTIONS 
+    SECURITY_QUESTIONS,
+    triggerDuressAlert
 } from '../hq/api';
 
 
 interface AuthScreenProps {
   onLoginSuccess: () => void;
 }
+
+const DURESS_PASSWORD = "red-sky-morning";
 
 type AuthView = 'login' | 'register' | 'forgotPassword';
 type LoadingState = 'idle' | 'loading' | 'success' | 'error';
@@ -37,10 +40,10 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
       <div className="w-full max-w-md mx-auto">
         <div className="flex flex-col items-center justify-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
             <h1 className="text-3xl font-bold text-gray-200 mt-4 tracking-wider">VAJRALINK</h1>
-            <p className="text-teal-400 mt-1">Zero-Trust Communication Platform</p>
+            <p className="text-teal-400 mt-1">Operative Messenger</p>
         </div>
         <div className="bg-gray-950 border border-gray-800 rounded-2xl shadow-2xl p-8">
           {renderView()}
@@ -57,12 +60,41 @@ const LoginView: React.FC<{onSwitchView: (v: AuthView) => void; onLoginSuccess: 
     const [status, setStatus] = useState<LoadingState>('idle');
     const [error, setError] = useState('');
 
+    const handleDuressLogin = (user: string) => {
+        console.warn('DURESS PROTOCOL ACTIVATED FOR:', user);
+        sessionStorage.setItem('duressMode', 'true');
+        
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                await triggerDuressAlert(user, { lat: latitude, lon: longitude });
+            },
+            async (error) => {
+                console.error("Geolocation error:", error);
+                // Still trigger alert without location
+                await triggerDuressAlert(user, null);
+            },
+            { enableHighAccuracy: true }
+        );
+        
+        // Appear to log in successfully
+        setStatus('success');
+        setTimeout(onLoginSuccess, 500);
+    };
+
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         setStatus('loading');
         setError('');
-        const result = await login(username, password);
+
+        if (password === DURESS_PASSWORD) {
+            handleDuressLogin(username);
+            return;
+        }
+
+        const result = await login(username, password, 'operative');
         if (result.success) {
+            sessionStorage.removeItem('duressMode'); // Ensure duress mode is off
             setStatus('success');
             setTimeout(onLoginSuccess, 500);
         } else {
@@ -93,17 +125,32 @@ const LoginView: React.FC<{onSwitchView: (v: AuthView) => void; onLoginSuccess: 
 // --- Register View ---
 const RegisterView: React.FC<{onSwitchView: (v: AuthView) => void}> = ({ onSwitchView }) => {
     const [step, setStep] = useState(1);
+    const [formData, setFormData] = useState({
+        username: '',
+        password: '',
+        serviceId: '',
+        rank: '',
+        unit: '',
+        enlistmentDate: '',
+        verifyingOfficer: '',
+        securityQuestionIndex: '',
+        securityQuestionAnswer: '',
+    });
     
     const nextStep = () => setStep(s => s + 1);
+    const prevStep = () => setStep(s => s - 1);
+    const updateForm = (data: Partial<typeof formData>) => setFormData(prev => ({ ...prev, ...data }));
+
 
     return (
         <div>
             <h2 className="text-2xl font-bold text-center text-white mb-1">Access Request</h2>
             <p className="text-sm text-gray-400 text-center mb-6">Follow the steps for secure enrollment.</p>
-            {step === 1 && <Step1 onComplete={nextStep} />}
-            {step === 2 && <Step2 onComplete={nextStep} />}
-            {step === 3 && <Step3 onComplete={nextStep} />}
-            {step === 4 && <Step4 onComplete={() => onSwitchView('login')} />}
+            {step === 1 && <CredentialsStep onComplete={nextStep} updateForm={updateForm} data={formData} />}
+            {step === 2 && <PersonnelDetailsStep onComplete={nextStep} onBack={prevStep} updateForm={updateForm} data={formData} />}
+            {step === 3 && <SecurityQuestionStep onComplete={nextStep} onBack={prevStep} updateForm={updateForm} data={formData} />}
+            {step === 4 && <BiometricStep onComplete={nextStep} onBack={prevStep} />}
+            {step === 5 && <ApprovalStep onComplete={() => onSwitchView('login')} data={formData} />}
             <div className="mt-6 text-center text-sm text-gray-400">
                 Already have an account? <button onClick={() => onSwitchView('login')} className="font-medium text-teal-500 hover:text-teal-400">Sign In</button>
             </div>
@@ -111,19 +158,14 @@ const RegisterView: React.FC<{onSwitchView: (v: AuthView) => void}> = ({ onSwitc
     );
 };
 
-const Step1: React.FC<{onComplete: () => void}> = ({ onComplete }) => {
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
+const CredentialsStep: React.FC<{onComplete: () => void, updateForm: (d: any) => void, data: any}> = ({ onComplete, updateForm, data }) => {
     const [confirm, setConfirm] = useState('');
     const [passwordValidations, setPasswordValidations] = useState({
-        length: false,
-        uppercase: false,
-        lowercase: false,
-        number: false,
-        special: false,
+        length: false, uppercase: false, lowercase: false, number: false, special: false,
     });
 
     useEffect(() => {
+        const { password } = data;
         setPasswordValidations({
             length: password.length >= 8,
             uppercase: /[A-Z]/.test(password),
@@ -131,15 +173,15 @@ const Step1: React.FC<{onComplete: () => void}> = ({ onComplete }) => {
             number: /[0-9]/.test(password),
             special: /[^A-Za-z0-9]/.test(password),
         });
-    }, [password]);
+    }, [data.password]);
 
     const allValid = Object.values(passwordValidations).every(v => v);
-    const isValid = allValid && username.trim().length > 0 && password !== '' && password === confirm;
+    const isValid = allValid && data.username.trim().length > 0 && data.password !== '' && data.password === confirm;
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         if (!isValid) return;
-        const { isTaken } = await checkUsername(username);
+        const { isTaken } = await checkUsername(data.username);
         if (isTaken) {
             alert('Username is already taken.');
         } else {
@@ -158,10 +200,10 @@ const Step1: React.FC<{onComplete: () => void}> = ({ onComplete }) => {
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            <h3 className="font-semibold text-center text-gray-300">Step 1: Credentials</h3>
-            <InputField label="Username" type="text" value={username} onChange={setUsername} />
-            <InputField label="Password" type="password" value={password} onChange={setPassword} />
-            {password && (
+            <h3 className="font-semibold text-center text-gray-300">Step 1 of 5: Credentials</h3>
+            <InputField label="Username" type="text" value={data.username} onChange={(v) => updateForm({ username: v})} />
+            <InputField label="Password" type="password" value={data.password} onChange={(v) => updateForm({ password: v})} />
+            {data.password && (
                 <ul className="text-xs space-y-1 p-3 bg-gray-900 rounded-md">
                     <ValidationItem valid={passwordValidations.length} label="At least 8 characters" />
                     <ValidationItem valid={passwordValidations.uppercase} label="Contains an uppercase letter" />
@@ -171,7 +213,7 @@ const Step1: React.FC<{onComplete: () => void}> = ({ onComplete }) => {
                 </ul>
             )}
             <InputField label="Confirm Password" type="password" value={confirm} onChange={setConfirm} />
-            {password && confirm && password !== confirm && (
+            {data.password && confirm && data.password !== confirm && (
                  <p className="text-xs text-red-400 text-center">Passwords do not match.</p>
             )}
             <AuthButton text="Next" status={isValid ? 'idle' : 'error'} />
@@ -180,32 +222,50 @@ const Step1: React.FC<{onComplete: () => void}> = ({ onComplete }) => {
 };
 
 
-const Step2: React.FC<{onComplete: () => void}> = ({ onComplete }) => {
-    const [questionIndex, setQuestionIndex] = useState('');
-    const [answer, setAnswer] = useState('');
+const PersonnelDetailsStep: React.FC<{onComplete: () => void, onBack: () => void, updateForm: (d: any) => void, data: any}> = ({ onComplete, onBack, updateForm, data }) => {
+    const isValid = data.serviceId && data.rank && data.unit && data.enlistmentDate && data.verifyingOfficer;
+    const handleSubmit = (e: FormEvent) => { e.preventDefault(); if (isValid) onComplete(); };
 
-    const handleSubmit = (e: FormEvent) => {
-        e.preventDefault();
-        if (questionIndex && answer) onComplete();
-    };
-    
     return (
          <form onSubmit={handleSubmit} className="space-y-4">
-            <h3 className="font-semibold text-center text-gray-300">Step 2: Security Question</h3>
-             <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Select a Question</label>
-                <select value={questionIndex} onChange={(e) => setQuestionIndex(e.target.value)} className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="" disabled>-- Select a question --</option>
-                    {SECURITY_QUESTIONS.map((q, i) => <option key={i} value={i}>{q}</option>)}
-                </select>
+            <h3 className="font-semibold text-center text-gray-300">Step 2 of 5: Personnel Details</h3>
+            <InputField label="Service ID" type="text" value={data.serviceId} onChange={v => updateForm({ serviceId: v })} />
+            <InputField label="Rank" type="text" value={data.rank} onChange={v => updateForm({ rank: v })} />
+            <InputField label="Unit / Battalion" type="text" value={data.unit} onChange={v => updateForm({ unit: v })} />
+            <InputField label="Enlistment Date" type="date" value={data.enlistmentDate} onChange={v => updateForm({ enlistmentDate: v })} />
+            <InputField label="Verifying Officer" type="text" value={data.verifyingOfficer} onChange={v => updateForm({ verifyingOfficer: v })} />
+            <div className="flex gap-4">
+                <button type="button" onClick={onBack} className="w-full text-center py-3 px-4 border border-gray-700 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800">Back</button>
+                <AuthButton text="Next" status={isValid ? 'idle' : 'error'} />
             </div>
-            <InputField label="Your Answer" type="text" value={answer} onChange={setAnswer} />
-            <AuthButton text="Next" status={(questionIndex && answer) ? 'idle' : 'error'} />
         </form>
     )
 };
 
-const Step3: React.FC<{onComplete: () => void}> = ({ onComplete }) => {
+const SecurityQuestionStep: React.FC<{onComplete: () => void, onBack: () => void, updateForm: (d: any) => void, data: any}> = ({ onComplete, onBack, updateForm, data }) => {
+    const isValid = data.securityQuestionIndex && data.securityQuestionAnswer;
+    const handleSubmit = (e: FormEvent) => { e.preventDefault(); if (isValid) onComplete(); };
+    
+    return (
+         <form onSubmit={handleSubmit} className="space-y-4">
+            <h3 className="font-semibold text-center text-gray-300">Step 3 of 5: Security Question</h3>
+             <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Select a Question</label>
+                <select value={data.securityQuestionIndex} onChange={(e) => updateForm({ securityQuestionIndex: e.target.value })} className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="" disabled>-- Select a question --</option>
+                    {SECURITY_QUESTIONS.map((q, i) => <option key={i} value={i}>{q}</option>)}
+                </select>
+            </div>
+            <InputField label="Your Answer" type="text" value={data.securityQuestionAnswer} onChange={(v) => updateForm({ securityQuestionAnswer: v })} />
+            <div className="flex gap-4">
+                <button type="button" onClick={onBack} className="w-full text-center py-3 px-4 border border-gray-700 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800">Back</button>
+                <AuthButton text="Next" status={isValid ? 'idle' : 'error'} />
+            </div>
+        </form>
+    )
+};
+
+const BiometricStep: React.FC<{onComplete: () => void, onBack: () => void}> = ({ onComplete, onBack }) => {
     const [status, setStatus] = useState<LoadingState>('idle');
     
     const handleBiometrics = () => {
@@ -218,7 +278,7 @@ const Step3: React.FC<{onComplete: () => void}> = ({ onComplete }) => {
 
     return (
         <div className="text-center space-y-4">
-            <h3 className="font-semibold text-gray-300">Step 3: Biometric Enrollment</h3>
+            <h3 className="font-semibold text-gray-300">Step 4 of 5: Biometric Enrollment</h3>
             <div className="flex justify-center">
                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-20 w-20 transition-colors ${status === 'success' ? 'text-green-400' : 'text-teal-400'}`} viewBox="0 0 20 20" fill="currentColor">
                     <path d="M10 3.5a.75.75 0 01.75.75v2.5a.75.75 0 01-1.5 0V4.25A.75.75 0 0110 3.5zM8.5 6.25a.75.75 0 00-1.5 0v2.5a.75.75 0 001.5 0V6.25zM11.5 6.25a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0V7a.75.75 0 01.75-.75zM10 8.5a.75.75 0 00-1.5 0v2.5a.75.75 0 001.5 0V8.5zM6.5 7a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0V7.75A.75.75 0 016.5 7zM13.5 8.5a.75.75 0 00-1.5 0v.5a.75.75 0 001.5 0v-.5z" />
@@ -226,29 +286,32 @@ const Step3: React.FC<{onComplete: () => void}> = ({ onComplete }) => {
                 </svg>
             </div>
             {status !== 'success' && <p className="text-sm text-gray-400">Place your finger on the scanner to enroll your biometric signature.</p>}
-            <AuthButton text={status === 'success' ? "Enrolled" : "Scan"} loadingText="Scanning..." status={status} onClick={handleBiometrics} />
+             <div className="flex gap-4">
+                <button type="button" onClick={onBack} className="w-full text-center py-3 px-4 border border-gray-700 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800">Back</button>
+                <AuthButton text={status === 'success' ? "Enrolled" : "Scan"} loadingText="Scanning..." status={status} onClick={handleBiometrics} />
+            </div>
         </div>
     );
 };
-const Step4: React.FC<{onComplete: () => void}> = ({ onComplete }) => {
+const ApprovalStep: React.FC<{onComplete: () => void, data: any}> = ({ onComplete, data }) => {
     const [status, setStatus] = useState<LoadingState>('loading');
     
     useEffect(() => {
         const performRegistration = async () => {
-            await register({}); // Pass user data here in a real app
+            await register(data);
             setStatus('success');
-            setTimeout(onComplete, 2000);
+            setTimeout(onComplete, 3000);
         };
         performRegistration();
-    }, [onComplete]);
+    }, [onComplete, data]);
 
     return (
         <div className="text-center space-y-4">
-            <h3 className="font-semibold text-gray-300">Final Step: HQ Approval</h3>
+            <h3 className="font-semibold text-gray-300">Step 5 of 5: HQ Approval</h3>
             <div className="flex justify-center">
                  {status === 'loading' ? <Spinner /> : <SuccessIcon />}
             </div>
-            <p className="text-sm text-gray-400">{status === 'loading' ? "Sending enrollment request to HQ for verification..." : "Request Approved! Redirecting to login."}</p>
+            <p className="text-sm text-gray-400">{status === 'loading' ? "Sending enrollment request to HQ for verification..." : "Request Sent! You will be notified via official channels upon approval. Redirecting to login."}</p>
         </div>
     );
 };

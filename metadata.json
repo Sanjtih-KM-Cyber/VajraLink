@@ -1,5 +1,8 @@
 {
   "name": "VajraLink Command HQ",
   "description": "An administrative dashboard for network monitoring, threat analysis, and operative management. It provides a centralized view of the VajraLink secure communication platform.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
 }
