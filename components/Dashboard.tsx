@@ -3,8 +3,8 @@ import Sidebar, { ChatInfo, DmChatInfo } from './Sidebar';
 import ChatScreen from './ChatScreen';
 import UserInfoPanel from './UserInfoPanel';
 import GroupInfoPanel from './GroupInfoPanel'; // Import the new component
-import { getContactsForUser, getGroupsForUser, getOperatives } from '../hq/api';
-import { Operative, Group } from '../common/types';
+import { getContactsForUser, getGroupsForUser, getOperativeProfile, setStatusVisibility, updateOperativeStatus } from '../hq/api';
+import { Operative, Group, OperativeStatus } from '../common/types';
 
 type Theme = 'light' | 'dark';
 
@@ -19,7 +19,9 @@ const SettingsMenu: React.FC<{
     setTheme: (theme: Theme) => void;
     inactivityDuration: number;
     setInactivityDuration: (duration: number) => void;
-}> = ({ isOpen, onClose, onLogout, theme, setTheme, inactivityDuration, setInactivityDuration }) => {
+    isStatusVisible: boolean;
+    onVisibilityChange: (isVisible: boolean) => void;
+}> = ({ isOpen, onClose, onLogout, theme, setTheme, inactivityDuration, setInactivityDuration, isStatusVisible, onVisibilityChange }) => {
     if (!isOpen) return null;
     
     const handlePasswordChange = () => { alert("Password change requires HQ authorization. A request form would be generated here."); onClose(); };
@@ -43,6 +45,19 @@ const SettingsMenu: React.FC<{
                      <div className="text-xs text-gray-400 dark:text-gray-500 px-2 font-semibold uppercase">Security</div>
                      <button onClick={handlePasswordChange} className="w-full text-left p-2 mt-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">Change Password</button>
                      <button onClick={handleQuestionChange} className="w-full text-left p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">Change Security Question</button>
+                </div>
+                 <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+                    <div className="text-xs text-gray-400 dark:text-gray-500 px-2 font-semibold uppercase">Privacy</div>
+                    <div className="flex justify-between items-center p-2 mt-1 rounded">
+                        <label htmlFor="status-visibility-toggle" className="text-sm">Status Visible</label>
+                        <button
+                            id="status-visibility-toggle"
+                            onClick={() => onVisibilityChange(!isStatusVisible)}
+                            className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${isStatusVisible ? 'bg-teal-600' : 'bg-gray-400 dark:bg-gray-600'}`}
+                        >
+                            <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${isStatusVisible ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                    </div>
                 </div>
                 <div className="p-2 border-b border-gray-200 dark:border-gray-700">
                      <div className="text-xs text-gray-400 dark:text-gray-500 px-2 font-semibold uppercase">Session</div>
@@ -90,6 +105,7 @@ const operativeToDmChatInfo = (operative: Operative): DmChatInfo => {
         rank: operative.rank,
         status: operative.status,
         joinDate: operative.joinDate,
+        isStatusVisible: operative.isStatusVisible,
     };
 };
 
@@ -106,6 +122,7 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = (props) => {
   const [chats, setChats] = useState<ChatInfo[]>([]);
   const [dms, setDms] = useState<DmChatInfo[]>([]);
+  const [currentUserProfile, setCurrentUserProfile] = useState<Operative | null>(null);
   const [selectedChat, setSelectedChat] = useState<ChatInfo | DmChatInfo | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isUserInfoPanelOpen, setUserInfoPanelOpen] = useState(false);
@@ -115,11 +132,14 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
   const [showHqAlert, setShowHqAlert] = useState(false);
   
   const loadInitialData = useCallback(async () => {
-      const [userGroups, userContacts] = await Promise.all([
+      const [userGroups, userContacts, userProfile] = await Promise.all([
           getGroupsForUser(CURRENT_USER),
-          getContactsForUser(CURRENT_USER)
+          getContactsForUser(CURRENT_USER),
+          getOperativeProfile(CURRENT_USER)
       ]);
 
+      setCurrentUserProfile(userProfile);
+      
       const groupChats = userGroups.map(groupToChatInfo);
       const dmChats = userContacts.map(operativeToDmChatInfo);
       
@@ -167,6 +187,18 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
       setTimeout(() => setShowHqAlert(false), 5000);
     }
   }, [complaintCount, showHqAlert]);
+  
+  const handleVisibilityChange = async (isVisible: boolean) => {
+      if (!currentUserProfile) return;
+      await setStatusVisibility(currentUserProfile.id, isVisible);
+      setCurrentUserProfile(prev => prev ? { ...prev, isStatusVisible: isVisible } : null);
+  };
+  
+  const handleStatusChange = async (newStatus: OperativeStatus) => {
+      if (!currentUserProfile) return;
+      await updateOperativeStatus(currentUserProfile.id, newStatus);
+      setCurrentUserProfile(prev => prev ? { ...prev, status: newStatus } : null);
+  };
 
   const handleAddGroup = (newGroup: ChatInfo) => {
     setChats(prevChats => [...prevChats, newGroup]);
@@ -195,7 +227,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
   const selectedDmInfo = selectedChat?.type === 'Direct Message' ? selectedChat as DmChatInfo : undefined;
 
-  if (!selectedChat) {
+  if (!selectedChat || !currentUserProfile) {
     // Render a loading state or placeholder
     return <div className="flex h-screen items-center justify-center bg-gray-950 text-white">Loading Dashboard...</div>;
   }
@@ -211,9 +243,16 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         onToggle={toggleSidebar}
         onToggleSettings={() => setSettingsOpen(!isSettingsOpen)}
         activeChatId={selectedChat.id}
-        currentUser={CURRENT_USER}
+        currentUserProfile={currentUserProfile}
+        onStatusChange={handleStatusChange}
       />
-      <SettingsMenu {...props} isOpen={isSettingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsMenu 
+        {...props} 
+        isOpen={isSettingsOpen} 
+        onClose={() => setSettingsOpen(false)}
+        isStatusVisible={currentUserProfile.isStatusVisible}
+        onVisibilityChange={handleVisibilityChange}
+      />
       <div 
         className="flex-1 flex flex-col relative"
         onClick={() => {

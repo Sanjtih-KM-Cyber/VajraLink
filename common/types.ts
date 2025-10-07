@@ -9,6 +9,9 @@ export interface User {
     securityQuestionIndex: number;
     securityQuestionAnswer: string;
     contacts: string[]; // Array of usernames
+    duressPassword?: string;
+    isFirstLogin?: boolean;
+    isStatusVisible?: boolean;
 }
 
 export interface Group {
@@ -29,6 +32,7 @@ export interface Operative {
     clearance: number;
     joinDate: string;
     isContact?: boolean;
+    isStatusVisible: boolean;
 }
 
 export interface Threat {
@@ -39,6 +43,10 @@ export interface Threat {
     timestamp: string;
     status: ThreatStatus;
     details: string;
+    aiAnalysis?: {
+        summary: string;
+        mitigationSteps: string[];
+    };
 }
 
 export interface DashboardStats {

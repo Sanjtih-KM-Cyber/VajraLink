@@ -19,10 +19,14 @@ const ThreatsView: React.FC = () => {
         fetchThreats();
     }, []);
 
+    const handleThreatUpdate = (updatedThreat: Threat) => {
+        setThreatList(threatList.map(t => t.id === updatedThreat.id ? updatedThreat : t));
+        setSelectedThreat(updatedThreat);
+    }
+
     const handleStatusChange = async (id: number, newStatus: ThreatStatus) => {
         const updatedThreat = await updateThreatStatus(id, newStatus);
-        setThreatList(threatList.map(t => t.id === id ? updatedThreat : t));
-        setSelectedThreat(updatedThreat); // Update the selected threat as well
+        handleThreatUpdate(updatedThreat);
     };
     
     const getStatusColor = (status: ThreatStatus) => {
@@ -79,7 +83,8 @@ const ThreatsView: React.FC = () => {
                 <ThreatDetailPanel 
                     threat={selectedThreat} 
                     onClose={() => setSelectedThreat(null)}
-                    onStatusChange={handleStatusChange} 
+                    onStatusChange={handleStatusChange}
+                    onThreatUpdate={handleThreatUpdate}
                 />
             )}
         </div>

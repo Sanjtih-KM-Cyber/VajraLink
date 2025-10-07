@@ -1,0 +1,163 @@
+{
+  "users": [
+    {
+      "username": "hq_admin",
+      "password": "password123",
+      "role": "admin",
+      "securityQuestionIndex": 2,
+      "securityQuestionAnswer": "Johnson",
+      "contacts": [],
+      "duressPassword": "panic-room-77",
+      "isFirstLogin": false,
+      "isStatusVisible": true
+    },
+    {
+      "username": "agent_zero",
+      "password": "password123",
+      "role": "operative",
+      "securityQuestionIndex": 2,
+      "securityQuestionAnswer": "Johnson",
+      "contacts": [
+        "dm-sarah",
+        "dm-mike",
+        "alpha-lead",
+        "spectre"
+      ],
+      "duressPassword": "red-sky-morning",
+      "isFirstLogin": false,
+      "isStatusVisible": true
+    }
+  ],
+  "operatives": [
+    {
+      "id": "agent_zero",
+      "name": "Agent Zero",
+      "rank": "Field Agent",
+      "status": "Online",
+      "clearance": 4,
+      "joinDate": "2021-03-10",
+      "isStatusVisible": true
+    },
+    {
+      "id": "dm-sarah",
+      "name": "Sarah Jenkins",
+      "rank": "Lead Analyst",
+      "status": "Online",
+      "clearance": 4,
+      "joinDate": "2022-08-15",
+      "isStatusVisible": true
+    },
+    {
+      "id": "dm-mike",
+      "name": "Mike Chen",
+      "rank": "Field Agent",
+      "status": "Away",
+      "clearance": 3,
+      "joinDate": "2023-01-20",
+      "isStatusVisible": true
+    },
+    {
+      "id": "alpha-lead",
+      "name": "Alpha Lead",
+      "rank": "Squad Leader",
+      "status": "Online",
+      "clearance": 5,
+      "joinDate": "2020-05-22",
+      "isStatusVisible": true
+    },
+    {
+      "id": "spectre",
+      "name": "Spectre",
+      "rank": "Deep Cover Agent",
+      "status": "Offline",
+      "clearance": 5,
+      "joinDate": "2019-11-01",
+      "isStatusVisible": true
+    },
+    {
+      "id": "oracle",
+      "name": "Oracle",
+      "rank": "Intel Analyst",
+      "status": "Away",
+      "clearance": 4,
+      "joinDate": "2022-10-05",
+      "isStatusVisible": false
+    }
+  ],
+  "groups": [
+    {
+      "id": "alpha",
+      "name": "Alpha Group",
+      "icon": "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.084-1.28-.24-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.084-1.28.24-1.857m11.52 1.857a3 3 0 00-5.356-1.857m0 0A3 3 0 017 16.143m5.657 1.857l-2.829-5.657a3 3 0 015.657 0l-2.829 5.657z",
+      "admin": "alpha-lead",
+      "members": [
+        "alpha-lead",
+        "agent_zero",
+        "dm-mike"
+      ],
+      "createdAt": "2023-05-10T10:00:00Z"
+    },
+    {
+      "id": "work",
+      "name": "Project Condor",
+      "icon": "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
+      "admin": "agent_zero",
+      "members": [
+        "agent_zero",
+        "dm-sarah"
+      ],
+      "createdAt": "2024-02-18T15:30:00Z"
+    }
+  ],
+  "threats": [
+    {
+      "id": 1,
+      "type": "Phishing Attempt",
+      "source": "Personal Email",
+      "reportedBy": "agent_zero",
+      "timestamp": "2024-07-28 14:30 UTC",
+      "status": "Pending",
+      "details": "Received an email with a suspicious link claiming to be an urgent account verification. Link redirects to http://vajralink-secure-auth.xyz/login which is not an official domain."
+    },
+    {
+      "id": 2,
+      "type": "PII Leak",
+      "source": "VajraLink Message",
+      "reportedBy": "alpha-lead",
+      "timestamp": "2024-07-28 09:15 UTC",
+      "status": "Mitigated",
+      "details": "A new operative accidentally shared a phone number in the Alpha Group channel. The message was remotely deleted by OPSEC Sentinel bot."
+    },
+    {
+      "id": 3,
+      "type": "Anomalous Data Exfiltration",
+      "source": "Network Monitor",
+      "reportedBy": "System",
+      "timestamp": "2024-07-27 22:00 UTC",
+      "status": "Reviewing",
+      "details": "Unusual outbound traffic detected from an operative device in the North Sector. Data packet analysis is underway."
+    },
+    {
+      "id": 4,
+      "type": "Unauthorized Access Attempt",
+      "source": "Firewall Log",
+      "reportedBy": "System",
+      "timestamp": "2024-07-29 02:00 UTC",
+      "status": "Pending",
+      "details": "Multiple failed login attempts detected on the EU-Central-1 gateway from a blacklisted IP range."
+    }
+  ],
+  "pendingRegistrations": [
+    {
+      "username": "new_recruit_1",
+      "serviceId": "NR-81831",
+      "rank": "Recruit",
+      "unit": "Training Division",
+      "enlistmentDate": "2024-06-01",
+      "verifyingOfficer": "Sgt. Miller",
+      "requestDate": "2024-07-29",
+      "password": "password123"
+    }
+  ],
+  "connectionRequests": []
+}

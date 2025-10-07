@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import SearchOperativesModal from './SearchOperativesModal';
-import { Operative, Group } from '../common/types';
+import { Operative, Group, OperativeStatus } from '../common/types';
 import { getOperatives, addGroup } from '../hq/api';
 
 
@@ -16,6 +16,7 @@ export interface DmChatInfo extends ChatInfo {
     rank: string;
     status: 'Online' | 'Away' | 'Offline';
     joinDate: string;
+    isStatusVisible: boolean;
 }
 
 interface SidebarProps {
@@ -27,7 +28,8 @@ interface SidebarProps {
   onToggle: () => void;
   onToggleSettings: () => void;
   activeChatId: string;
-  currentUser: string;
+  currentUserProfile: Operative;
+  onStatusChange: (newStatus: OperativeStatus) => void;
 }
 
 const BOTS_LIST: ChatInfo[] = [
@@ -55,14 +57,14 @@ const CreateGroupModal: React.FC<{onClose: () => void; onAddGroup: (group: ChatI
     const [availableOperatives, setAvailableOperatives] = useState<Operative[]>([]);
     const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'pending' | 'approved'>('idle');
 
-    useEffect(() => {
+    useState(() => {
         const fetchOps = async () => {
             // In a real app, you might only fetch contacts. For this simulation, we get all.
             const allOps = await getOperatives();
             setAvailableOperatives(allOps.filter(op => op.id !== currentUser));
         };
         fetchOps();
-    }, [currentUser]);
+    });
 
     const handleToggleMember = (operativeId: string) => {
         setSelectedMembers(prev =>
@@ -186,20 +188,9 @@ const CreateGroupModal: React.FC<{onClose: () => void; onAddGroup: (group: ChatI
 }
 
 
-const Sidebar: React.FC<SidebarProps> = ({ chats, dms, onChatSelect, onAddGroup, isCollapsed, onToggle, onToggleSettings, activeChatId, currentUser }) => {
+const Sidebar: React.FC<SidebarProps> = ({ chats, dms, onChatSelect, onAddGroup, isCollapsed, onToggle, onToggleSettings, activeChatId, currentUserProfile, onStatusChange }) => {
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
-  const [isDuressActive, setIsDuressActive] = useState(false);
-
-  useEffect(() => {
-    const checkDuress = () => {
-        const duress = sessionStorage.getItem('duressMode') === 'true';
-        setIsDuressActive(duress);
-    };
-    checkDuress();
-    const interval = setInterval(checkDuress, 3000);
-    return () => clearInterval(interval);
-  }, []);
   
   const handleSelect = (chat: ChatInfo | DmChatInfo) => {
     onChatSelect(chat);
@@ -225,10 +216,18 @@ const Sidebar: React.FC<SidebarProps> = ({ chats, dms, onChatSelect, onAddGroup,
     </ul>
   );
 
+    const getStatusColor = (status: OperativeStatus) => {
+        switch(status) {
+            case 'Online': return 'bg-green-500';
+            case 'Away': return 'bg-yellow-500';
+            default: return 'bg-gray-500';
+        }
+    };
+
   return (
     <>
-    {showCreateGroupModal && <CreateGroupModal onClose={() => setShowCreateGroupModal(false)} onAddGroup={onAddGroup} currentUser={currentUser} />}
-    {showSearchModal && <SearchOperativesModal onClose={() => setShowSearchModal(false)} currentUser={currentUser} />}
+    {showCreateGroupModal && <CreateGroupModal onClose={() => setShowCreateGroupModal(false)} onAddGroup={onAddGroup} currentUser={currentUserProfile.id} />}
+    {showSearchModal && <SearchOperativesModal onClose={() => setShowSearchModal(false)} currentUser={currentUserProfile.id} />}
     <nav className={`flex flex-col bg-gray-100 dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-80'}`}>
       <div 
         onClick={onToggle}
@@ -239,14 +238,6 @@ const Sidebar: React.FC<SidebarProps> = ({ chats, dms, onChatSelect, onAddGroup,
         tabIndex={0}
       >
         <div className="flex items-center space-x-3">
-          {isDuressActive && (
-              <div className="absolute top-3 left-3">
-                <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
-                </span>
-              </div>
-          )}
           <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-teal-500 dark:text-teal-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
@@ -293,6 +284,31 @@ const Sidebar: React.FC<SidebarProps> = ({ chats, dms, onChatSelect, onAddGroup,
           {renderChannelList(BOTS_LIST)}
         </div>
       </div>
+       <div className="p-2 border-t border-gray-200 dark:border-gray-800">
+            <div className={`flex items-center p-2 rounded-lg ${isCollapsed ? 'justify-center' : ''}`}>
+                 <div className={`relative flex-shrink-0`}>
+                     <div className="h-10 w-10 rounded-full bg-teal-500 flex items-center justify-center font-bold text-white text-lg">
+                        {currentUserProfile.name.split(' ').map(n => n[0]).join('').substring(0,2)}
+                    </div>
+                     <span className={`absolute bottom-0 right-0 block h-3 w-3 rounded-full ${getStatusColor(currentUserProfile.status)} border-2 border-gray-100 dark:border-gray-950`}></span>
+                 </div>
+                 {!isCollapsed && (
+                    <div className="ml-3 flex-1 min-w-0">
+                        <p className="font-semibold text-gray-800 dark:text-white text-sm truncate">{currentUserProfile.name}</p>
+                        <select 
+                            value={currentUserProfile.status}
+                            onChange={(e) => onStatusChange(e.target.value as OperativeStatus)}
+                            className="text-xs text-gray-500 dark:text-gray-400 bg-transparent border-0 focus:ring-0 p-0"
+                            disabled={currentUserProfile.status === 'Offline'}
+                        >
+                            <option value="Online">Online</option>
+                            <option value="Away">Away</option>
+                            <option value="Offline" disabled>Offline</option>
+                        </select>
+                    </div>
+                 )}
+            </div>
+       </div>
     </nav>
     </>
   );

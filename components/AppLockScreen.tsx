@@ -51,8 +51,8 @@ const AppLockScreen: React.FC<AppLockScreenProps> = ({ onUnlock }) => {
             const { latitude, longitude } = position.coords;
             await triggerDuressAlert(currentUser, { lat: latitude, lon: longitude });
         },
-        async (error) => {
-            console.error("Geolocation error:", error);
+        async (error: GeolocationPositionError) => {
+            console.error(`Geolocation error: ${error.message} (code: ${error.code})`);
             await triggerDuressAlert(currentUser, null);
         },
         { enableHighAccuracy: true }

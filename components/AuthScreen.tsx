@@ -14,8 +14,6 @@ interface AuthScreenProps {
   onLoginSuccess: () => void;
 }
 
-const DURESS_PASSWORD = "red-sky-morning";
-
 type AuthView = 'login' | 'register' | 'forgotPassword';
 type LoadingState = 'idle' | 'loading' | 'success' | 'error';
 
@@ -53,12 +51,44 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   );
 };
 
+const FirstLoginInfoView: React.FC<{ duressPassword: string; onContinue: () => void; }> = ({ duressPassword, onContinue }) => {
+    return (
+        <div className="text-center">
+            <h2 className="text-2xl font-bold text-white mb-2">Welcome, Operative</h2>
+            <p className="text-gray-400 mb-6">Your account has been approved. For your security, please record the following information.</p>
+            
+            <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 space-y-4 text-left">
+                <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase">Standard Login</label>
+                    <p className="text-gray-300">Use your standard username and password for normal operations.</p>
+                </div>
+                <div className="bg-red-900/50 border border-red-500/30 rounded-lg p-4">
+                    <label className="text-xs font-semibold text-red-400 uppercase">Duress Password</label>
+                    <p className="text-lg font-mono tracking-widest text-white my-2 bg-gray-800 p-2 rounded text-center">{duressPassword}</p>
+                    <p className="text-sm text-red-300/80">
+                        Memorize this password. Use it <span className="font-bold">ONLY</span> if you are compromised or being forced to log in. This will silently alert HQ.
+                    </p>
+                </div>
+            </div>
+
+            <button
+                onClick={onContinue}
+                className="mt-8 w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-500"
+            >
+                I have recorded my duress password. Continue.
+            </button>
+        </div>
+    );
+};
+
 // --- Login View ---
 const LoginView: React.FC<{onSwitchView: (v: AuthView) => void; onLoginSuccess: () => void;}> = ({ onSwitchView, onLoginSuccess }) => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [status, setStatus] = useState<LoadingState>('idle');
     const [error, setError] = useState('');
+    const [showFirstLoginInfo, setShowFirstLoginInfo] = useState(false);
+    const [newDuressPassword, setNewDuressPassword] = useState('');
 
     const handleDuressLogin = (user: string) => {
         console.warn('DURESS PROTOCOL ACTIVATED FOR:', user);
@@ -69,9 +99,8 @@ const LoginView: React.FC<{onSwitchView: (v: AuthView) => void; onLoginSuccess: 
                 const { latitude, longitude } = position.coords;
                 await triggerDuressAlert(user, { lat: latitude, lon: longitude });
             },
-            async (error) => {
-                console.error("Geolocation error:", error);
-                // Still trigger alert without location
+            async (error: GeolocationPositionError) => {
+                console.error(`Geolocation error: ${error.message} (code: ${error.code})`);
                 await triggerDuressAlert(user, null);
             },
             { enableHighAccuracy: true }
@@ -87,21 +116,28 @@ const LoginView: React.FC<{onSwitchView: (v: AuthView) => void; onLoginSuccess: 
         setStatus('loading');
         setError('');
 
-        if (password === DURESS_PASSWORD) {
-            handleDuressLogin(username);
-            return;
-        }
-
         const result = await login(username, password, 'operative');
+        
         if (result.success) {
-            sessionStorage.removeItem('duressMode'); // Ensure duress mode is off
-            setStatus('success');
-            setTimeout(onLoginSuccess, 500);
+            if (result.duress) {
+                handleDuressLogin(username);
+            } else if (result.firstLogin && result.duressPassword) {
+                setNewDuressPassword(result.duressPassword);
+                setShowFirstLoginInfo(true);
+            } else {
+                sessionStorage.removeItem('duressMode');
+                setStatus('success');
+                setTimeout(onLoginSuccess, 500);
+            }
         } else {
             setStatus('error');
             setError(result.error || 'An unknown error occurred.');
         }
     };
+
+    if (showFirstLoginInfo) {
+        return <FirstLoginInfoView duressPassword={newDuressPassword} onContinue={onLoginSuccess} />;
+    }
 
     return (
         <div>

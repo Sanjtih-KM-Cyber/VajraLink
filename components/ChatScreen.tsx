@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatInfo, DmChatInfo } from './Sidebar';
 import { Message } from '../common/types';

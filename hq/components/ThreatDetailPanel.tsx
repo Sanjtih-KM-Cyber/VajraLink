@@ -1,14 +1,31 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Threat, ThreatStatus } from '../../common/types';
+import { analyzeThreatWithAI } from '../api';
 
 interface ThreatDetailPanelProps {
   threat: Threat;
   onClose: () => void;
   onStatusChange: (id: number, newStatus: ThreatStatus) => void;
+  onThreatUpdate: (updatedThreat: Threat) => void;
 }
 
-const ThreatDetailPanel: React.FC<ThreatDetailPanelProps> = ({ threat, onClose, onStatusChange }) => {
+const ThreatDetailPanel: React.FC<ThreatDetailPanelProps> = ({ threat, onClose, onStatusChange, onThreatUpdate }) => {
     
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const handleAiAnalysis = async () => {
+    setIsAnalyzing(true);
+    try {
+      const updatedThreat = await analyzeThreatWithAI(threat.id);
+      onThreatUpdate(updatedThreat);
+    } catch (error) {
+      console.error("AI Analysis failed:", error);
+      alert("Failed to retrieve AI analysis.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const getStatusInfo = (status: ThreatStatus) => {
     switch (status) {
       case 'Pending': return { color: 'bg-red-500', text: 'Pending' };
@@ -88,6 +105,56 @@ const ThreatDetailPanel: React.FC<ThreatDetailPanelProps> = ({ threat, onClose, 
     return null;
   }
 
+  const AiAnalysisSection: React.FC = () => {
+    if (isAnalyzing) {
+        return (
+            <div className="mt-6 text-center">
+                <div className="flex justify-center items-center">
+                    <svg className="animate-spin h-5 w-5 text-teal-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <p className="ml-3 text-teal-400">Analyzing threat with OPSEC-AI...</p>
+                </div>
+            </div>
+        )
+    }
+
+    if (!threat.aiAnalysis) {
+        return (
+            threat.status === 'Reviewing' ? (
+                <div className="mt-6">
+                    <button onClick={handleAiAnalysis} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-teal-600 hover:bg-teal-500 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01-.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" /></svg>
+                        Trigger AI Analysis
+                    </button>
+                </div>
+            ) : null
+        );
+    }
+    
+    return (
+        <div className="mt-6 bg-gray-900/70 p-4 rounded-lg border border-teal-500/30">
+            <h3 className="font-bold text-teal-400 mb-3 flex items-center gap-2">
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01-.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" /></svg>
+                AI Analysis & Mitigation
+            </h3>
+            <div className="mb-4">
+                <h4 className="text-xs font-semibold text-gray-400 uppercase">Summary</h4>
+                <p className="text-sm text-gray-300 mt-1">{threat.aiAnalysis.summary}</p>
+            </div>
+            <div>
+                 <h4 className="text-xs font-semibold text-gray-400 uppercase">Suggested Mitigation</h4>
+                 <ul className="text-sm text-gray-300 mt-2 space-y-2">
+                    {threat.aiAnalysis.mitigationSteps.map((step, i) => (
+                        <li key={i} className="flex items-start">
+                           <svg className="h-4 w-4 text-teal-400 mr-2 mt-0.5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                            <span>{step}</span>
+                        </li>
+                    ))}
+                 </ul>
+            </div>
+        </div>
+    );
+  }
+
   return (
     <>
       <div 
@@ -122,6 +189,7 @@ const ThreatDetailPanel: React.FC<ThreatDetailPanelProps> = ({ threat, onClose, 
           </div>
 
           <ContextualIntelligence threat={threat} />
+          <AiAnalysisSection />
 
         </main>
         
