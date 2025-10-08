@@ -302,29 +302,42 @@ const SecurityQuestionStep: React.FC<{onComplete: () => void, onBack: () => void
 };
 
 const BiometricStep: React.FC<{onComplete: () => void, onBack: () => void}> = ({ onComplete, onBack }) => {
-    const [status, setStatus] = useState<LoadingState>('idle');
-    
-    const handleBiometrics = () => {
-        setStatus('loading');
+    const [scanStatus, setScanStatus] = useState<'idle' | 'standard' | 'duress'>('idle');
+    const [enrolled, setEnrolled] = useState<{standard: boolean, duress: boolean}>({ standard: false, duress: false });
+
+    const handleScan = (type: 'standard' | 'duress') => {
+        setScanStatus(type);
         setTimeout(() => {
-            setStatus('success');
-            setTimeout(onComplete, 1000);
+            setEnrolled(prev => ({ ...prev, [type]: true }));
+            setScanStatus('idle');
         }, 2000);
     };
+
+    const bothEnrolled = enrolled.standard && enrolled.duress;
 
     return (
         <div className="text-center space-y-4">
             <h3 className="font-semibold text-gray-300">Step 4 of 5: Biometric Enrollment</h3>
-            <div className="flex justify-center">
-                 <svg xmlns="http://www.w3.org/2000/svg" className={`h-20 w-20 transition-colors ${status === 'success' ? 'text-green-400' : 'text-teal-400'}`} viewBox="0 0 20 20" fill="currentColor">
+            <p className="text-sm text-gray-400">Enroll both a standard and a duress biometric signature. This is a critical security step.</p>
+            
+            <div className="flex justify-center my-4">
+                 <svg xmlns="http://www.w3.org/2000/svg" className={`h-20 w-20 transition-colors ${scanStatus !== 'idle' && 'animate-pulse'} ${scanStatus === 'standard' && 'text-teal-400'} ${scanStatus === 'duress' && 'text-red-500'} ${(bothEnrolled && scanStatus === 'idle') ? 'text-green-400' : 'text-gray-600'}`} viewBox="0 0 20 20" fill="currentColor">
                     <path d="M10 3.5a.75.75 0 01.75.75v2.5a.75.75 0 01-1.5 0V4.25A.75.75 0 0110 3.5zM8.5 6.25a.75.75 0 00-1.5 0v2.5a.75.75 0 001.5 0V6.25zM11.5 6.25a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0V7a.75.75 0 01.75-.75zM10 8.5a.75.75 0 00-1.5 0v2.5a.75.75 0 001.5 0V8.5zM6.5 7a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0V7.75A.75.75 0 016.5 7zM13.5 8.5a.75.75 0 00-1.5 0v.5a.75.75 0 001.5 0v-.5z" />
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM2 10a8.001 8.001 0 0113.14-6.313.75.75 0 01.912.264l1.25 2.5a.75.75 0 01-.13 1.01l-2.5 2.5a.75.75 0 01-1.012-.132A5.502 5.502 0 005.5 10a.75.75 0 01-1.5 0c0-1.859.923-3.52 2.365-4.524a.75.75 0 01.554-1.293A8.001 8.001 0 012 10z" clipRule="evenodd" />
                 </svg>
             </div>
-            {status !== 'success' && <p className="text-sm text-gray-400">Place your finger on the scanner to enroll your biometric signature.</p>}
+
+            <div className="w-full flex gap-4">
+                 <button type="button" onClick={() => handleScan('standard')} disabled={scanStatus !== 'idle' || enrolled.standard} className="w-full py-3 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 text-white bg-gray-800 border border-gray-700 hover:border-teal-500">
+                    {enrolled.standard ? 'Standard Enrolled' : scanStatus === 'standard' ? 'Scanning...' : 'Enroll Standard'}
+                 </button>
+                 <button type="button" onClick={() => handleScan('duress')} disabled={scanStatus !== 'idle' || enrolled.duress} className="w-full py-3 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 text-white bg-gray-800 border border-gray-700 hover:border-red-500">
+                    {enrolled.duress ? 'Duress Enrolled' : scanStatus === 'duress' ? 'Scanning...' : 'Enroll Duress'}
+                 </button>
+            </div>
              <div className="flex gap-4">
                 <button type="button" onClick={onBack} className="w-full text-center py-3 px-4 border border-gray-700 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800">Back</button>
-                <AuthButton text={status === 'success' ? "Enrolled" : "Scan"} loadingText="Scanning..." status={status} onClick={handleBiometrics} />
+                <AuthButton text="Next" status={bothEnrolled ? 'idle' : 'error'} onClick={onComplete} />
             </div>
         </div>
     );

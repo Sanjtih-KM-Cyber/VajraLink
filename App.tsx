@@ -1,27 +1,25 @@
 import React, { useState } from 'react';
 import VpnCheckScreen from './components/VpnCheckScreen';
-import OperativeApp from './components/OperativeApp';
-import AuthScreen from './components/AuthScreen';
+import RoleSelectionScreen from './components/RoleSelectionScreen';
 
-type AppStatus = 'vpn_check' | 'login' | 'authenticated';
+type AppStatus = 'vpn_check' | 'role_selection';
 
 const App: React.FC = () => {
   const [appStatus, setAppStatus] = useState<AppStatus>('vpn_check');
 
   const handleVpnSuccess = () => {
-    setAppStatus('login');
+    setAppStatus('role_selection');
   };
 
-  const handleLoginSuccess = () => {
-    setAppStatus('authenticated');
-  };
+  const handleSelectOperative = () => {
+      // Redirect to the operative-specific app
+      window.location.href = '/operative.html';
+  }
 
   const renderContent = () => {
     switch (appStatus) {
-      case 'authenticated':
-        return <OperativeApp />;
-      case 'login':
-        return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
+      case 'role_selection':
+        return <RoleSelectionScreen onSelectOperative={handleSelectOperative} />;
       case 'vpn_check':
       default:
         return <VpnCheckScreen onVpnSuccess={handleVpnSuccess} />;

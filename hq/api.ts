@@ -4,6 +4,11 @@ const API_BASE_URL = 'http://localhost:3001/api';
 
 const handleResponse = async (response: Response) => {
     if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+            // Clear token and reload if unauthorized, forcing re-login
+            localStorage.removeItem('vajralink_token');
+            window.location.reload();
+        }
         const errorData = await response.json().catch(() => ({ error: 'An unknown network error occurred.' }));
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
     }
@@ -12,9 +17,19 @@ const handleResponse = async (response: Response) => {
 
 const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
     try {
+        const token = localStorage.getItem('vajralink_token');
+        const headers: HeadersInit = {
+            'Content-Type': 'application/json',
+            ...options.headers,
+        };
+
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
         const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-            headers: { 'Content-Type': 'application/json', ...options.headers },
             ...options,
+            headers,
         });
         return handleResponse(response);
     } catch (error) {
@@ -25,11 +40,19 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
 
 
 // --- Auth API ---
-export const login = (username: string, password, expectedRole: 'operative' | 'admin') =>
-    apiRequest('/login', {
+export const login = async (username: string, password, expectedRole: 'operative' | 'admin') => {
+    // Login doesn't use the standard apiRequest because it doesn't send a token
+    const response = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password, role: expectedRole })
     });
+    const data = await handleResponse(response);
+    if (data.success && data.token) {
+        localStorage.setItem('vajralink_token', data.token);
+    }
+    return data;
+}
 
 export const checkUsername = (username: string) =>
     apiRequest('/check-username', { method: 'POST', body: JSON.stringify({ username }) });
