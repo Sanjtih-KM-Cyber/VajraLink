@@ -3,17 +3,49 @@ const urlsToCache = [
   '/',
   '/index.html',
   '/operative.html',
-  '/index.tsx',
-  '/App.tsx',
-  '/components/OperativeApp.tsx',
-  '/components/AuthScreen.tsx',
-  '/components/VpnCheckScreen.tsx',
-  '/components/Dashboard.tsx',
-  '/components/Sidebar.tsx',
-  '/components/ChatScreen.tsx',
-  '/components/AppLockScreen.tsx',
+  '/hq/index.html',
+  '/manifest.json',
+  '/index.css',
+
+  '/index.jsx',
+  '/App.jsx',
+  '/operative_index.jsx',
+
+  '/common/types.js',
+  '/hq/api.js',
+  '/hq/types.js',
+
+  '/components/AIAgentMockup.jsx',
+  '/components/AppLockScreen.jsx',
+  '/components/AuthScreen.jsx',
+  '/components/ChatScreen.jsx',
+  '/components/CodeBlock.jsx',
+  '/components/Dashboard.jsx',
+  '/components/GroupInfoPanel.jsx',
+  '/components/OperativeApp.jsx',
+  '/components/RoleSelectionScreen.jsx',
+  '/components/SearchOperativesModal.jsx',
+  '/components/SectionCard.jsx',
+  '/components/Sidebar.jsx',
+  '/components/UserInfoPanel.jsx',
+  '/components/VpnCheckScreen.jsx',
+
+  '/hq/index.jsx',
+  '/hq/App.jsx',
+  '/hq/components/AuthScreen.jsx',
+  '/hq/components/ConnectionRequestsView.jsx',
+  '/hq/components/DashboardView.jsx',
+  '/hq/components/HqLayout.jsx',
+  '/hq/components/OperativesView.jsx',
+  '/hq/components/Sidebar.jsx',
+  '/hq/components/ThreatDetailPanel.jsx',
+  '/hq/components/ThreatsView.jsx',
+  
   'https://cdn.tailwindcss.com',
-  'https://storage.googleapis.com/aistudio-project-files/f1a5ba43-a67b-4835-961f-442b3112469d/icon-192.png'
+  'https://unpkg.com/@babel/standalone@7.24.7/babel.min.js',
+  'https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js',
+  'https://storage.googleapis.com/aistudio-project-files/f1a5ba43-a67b-4835-961f-442b3112469d/icon-192.png',
+  'https://storage.googleapis.com/aistudio-project-files/f1a5ba43-a67b-4835-961f-442b3112469d/icon-512.png'
 ];
 
 self.addEventListener('install', event => {
@@ -21,7 +53,10 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('Opened cache');
-        return cache.addAll(urlsToCache);
+        // Use addAll with a catch to prevent install failure if one resource fails
+        return cache.addAll(urlsToCache).catch(err => {
+          console.error('Failed to cache one or more resources:', err);
+        });
       })
   );
 });
@@ -46,7 +81,7 @@ self.addEventListener('fetch', event => {
         return fetch(event.request).then(
           response => {
             // Check if we received a valid response
-            if (!response || response.status !== 200 || response.type !== 'basic') {
+            if (!response || response.status !== 200) {
               return response;
             }
 
@@ -63,7 +98,11 @@ self.addEventListener('fetch', event => {
 
             return response;
           }
-        );
+        ).catch(err => {
+            console.log('Fetch failed; returning offline page instead.', err);
+            // Optionally, return a fallback offline page
+            // return caches.match('/offline.html');
+        });
       })
   );
 });
