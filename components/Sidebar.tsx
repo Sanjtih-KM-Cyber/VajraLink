@@ -22,6 +22,7 @@ export interface DmChatInfo extends ChatInfo {
 interface SidebarProps {
   chats: ChatInfo[];
   dms: DmChatInfo[];
+  familyChats: ChatInfo[];
   onChatSelect: (chat: ChatInfo | DmChatInfo) => void;
   onAddGroup: (newGroup: ChatInfo) => void;
   isCollapsed: boolean;
@@ -30,6 +31,7 @@ interface SidebarProps {
   activeChatId: string;
   currentUserProfile: Operative;
   onStatusChange: (newStatus: OperativeStatus) => void;
+  onProfilePictureUpload: (file: File) => void;
 }
 
 const BOTS_LIST: ChatInfo[] = [
@@ -188,9 +190,21 @@ const CreateGroupModal: React.FC<{onClose: () => void; onAddGroup: (group: ChatI
 }
 
 
-const Sidebar: React.FC<SidebarProps> = ({ chats, dms, onChatSelect, onAddGroup, isCollapsed, onToggle, onToggleSettings, activeChatId, currentUserProfile, onStatusChange }) => {
+const Sidebar: React.FC<SidebarProps> = ({ chats, dms, familyChats, onChatSelect, onAddGroup, isCollapsed, onToggle, onToggleSettings, activeChatId, currentUserProfile, onStatusChange, onProfilePictureUpload }) => {
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleProfilePictureClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      onProfilePictureUpload(file);
+    }
+  };
   
   const handleSelect = (chat: ChatInfo | DmChatInfo) => {
     onChatSelect(chat);
@@ -278,6 +292,12 @@ const Sidebar: React.FC<SidebarProps> = ({ chats, dms, onChatSelect, onAddGroup,
           {renderChannelList(dms)}
         </div>
         <div>
+            <h2 className={`text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-2 ${isCollapsed ? 'text-center' : 'pl-2'}`}>
+                {isCollapsed ? 'F' : 'Family'}
+            </h2>
+            {renderChannelList(familyChats)}
+        </div>
+        <div>
            <h2 className={`text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-2 ${isCollapsed ? 'text-center' : 'pl-2'}`}>
             {isCollapsed ? 'U' : 'Utilities'}
           </h2>
@@ -287,9 +307,14 @@ const Sidebar: React.FC<SidebarProps> = ({ chats, dms, onChatSelect, onAddGroup,
        <div className="p-2 border-t border-gray-200 dark:border-gray-800">
             <div className={`flex items-center p-2 rounded-lg ${isCollapsed ? 'justify-center' : ''}`}>
                  <div className={`relative flex-shrink-0`}>
-                     <div className="h-10 w-10 rounded-full bg-teal-500 flex items-center justify-center font-bold text-white text-lg">
-                        {currentUserProfile.name.split(' ').map(n => n[0]).join('').substring(0,2)}
-                    </div>
+                    <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
+                    <button onClick={handleProfilePictureClick} className="h-10 w-10 rounded-full bg-teal-500 flex items-center justify-center font-bold text-white text-lg overflow-hidden">
+                        {currentUserProfile.pfp ? (
+                            <img src={currentUserProfile.pfp} alt="Profile" className="h-full w-full object-cover" />
+                        ) : (
+                            currentUserProfile.name.split(' ').map(n => n[0]).join('').substring(0,2)
+                        )}
+                    </button>
                      <span className={`absolute bottom-0 right-0 block h-3 w-3 rounded-full ${getStatusColor(currentUserProfile.status)} border-2 border-gray-100 dark:border-gray-950`}></span>
                  </div>
                  {!isCollapsed && (

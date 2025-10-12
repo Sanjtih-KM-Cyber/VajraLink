@@ -10,6 +10,8 @@ import {
 } from '../hq/api';
 
 
+import { useAuth } from '../contexts/AuthContext';
+
 interface AuthScreenProps {
   onLoginSuccess: () => void;
 }
@@ -83,6 +85,7 @@ const FirstLoginInfoView: React.FC<{ duressPassword: string; onContinue: () => v
 
 // --- Login View ---
 const LoginView: React.FC<{onSwitchView: (v: AuthView) => void; onLoginSuccess: () => void;}> = ({ onSwitchView, onLoginSuccess }) => {
+    const { login } = useAuth();
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [status, setStatus] = useState<LoadingState>('idle');
@@ -94,17 +97,22 @@ const LoginView: React.FC<{onSwitchView: (v: AuthView) => void; onLoginSuccess: 
         console.warn('DURESS PROTOCOL ACTIVATED FOR:', user);
         sessionStorage.setItem('duressMode', 'true');
         
-        navigator.geolocation.getCurrentPosition(
-            async (position) => {
-                const { latitude, longitude } = position.coords;
-                await triggerDuressAlert(user, { lat: latitude, lon: longitude });
-            },
-            async (error: GeolocationPositionError) => {
-                console.error(`Geolocation error: ${error.message} (code: ${error.code})`);
-                await triggerDuressAlert(user, null);
-            },
-            { enableHighAccuracy: true }
-        );
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const { latitude, longitude } = position.coords;
+                    await triggerDuressAlert(user, { lat: latitude, lon: longitude });
+                },
+                async (error: GeolocationPositionError) => {
+                    console.error(`Geolocation error: ${error.message} (code: ${error.code})`);
+                    await triggerDuressAlert(user, null);
+                },
+                { enableHighAccuracy: true }
+            );
+        } else {
+            console.error("Geolocation is not supported by this browser.");
+            triggerDuressAlert(user, null);
+        }
         
         // Appear to log in successfully
         setStatus('success');
@@ -127,6 +135,7 @@ const LoginView: React.FC<{onSwitchView: (v: AuthView) => void; onLoginSuccess: 
             } else {
                 sessionStorage.removeItem('duressMode');
                 setStatus('success');
+                login(username);
                 setTimeout(onLoginSuccess, 500);
             }
         } else {

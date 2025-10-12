@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Dashboard from './Dashboard';
 import AppLockScreen from './AppLockScreen';
@@ -7,13 +5,16 @@ import AppLockScreen from './AppLockScreen';
 type AppStatus = 'authenticated' | 'locked';
 type Theme = 'light' | 'dark';
 
+import { useAuth } from '../contexts/AuthContext';
+
 const OperativeApp: React.FC = () => {
   const [appStatus, setAppStatus] = useState<AppStatus>('authenticated');
   const [showScreenshotWarning, setShowScreenshotWarning] = useState(false);
   const [theme, setTheme] = useState<Theme>('dark');
   const [inactivityDuration, setInactivityDuration] = useState(2 * 60 * 1000); // Default 2 minutes
-  // FIX: Initialize useRef with null. The 'useRef' hook requires an initial value.
   const inactivityTimer = useRef<any>(null);
+  const { userId } = useAuth();
+  const currentUserId = userId;
 
   const handleLock = useCallback(() => {
     if (appStatus === 'authenticated') {
@@ -77,6 +78,7 @@ const OperativeApp: React.FC = () => {
         setTheme={setTheme}
         inactivityDuration={inactivityDuration}
         setInactivityDuration={setInactivityDuration}
+        currentUserId={currentUserId}
       />
       {appStatus === 'locked' && <AppLockScreen onUnlock={handleUnlock} />}
     </>

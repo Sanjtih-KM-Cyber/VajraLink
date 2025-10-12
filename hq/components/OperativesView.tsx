@@ -1,27 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { getOperatives } from '../api';
+import { getOperatives, lockOperative, wipeOperative } from '../api';
 import { Operative } from '../../common/types';
 
 const OperativesView: React.FC = () => {
     const [operatives, setOperatives] = useState<Operative[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
+    const fetchOperatives = async () => {
+        setIsLoading(true);
+        const data = await getOperatives();
+        setOperatives(data);
+        setIsLoading(false);
+    };
+
     useEffect(() => {
-        const fetchOperatives = async () => {
-            setIsLoading(true);
-            const data = await getOperatives();
-            setOperatives(data);
-            setIsLoading(false);
-        };
         fetchOperatives();
     }, []);
 
-    const handleAction = (operativeName: string, action: string) => {
-        alert(`Simulated Action: ${action} initiated for ${operativeName}.`);
+    const handleLock = async (operativeId: string) => {
+        await lockOperative(operativeId);
+        fetchOperatives();
+    };
+
+    const handleWipe = async (operativeId: string, operativeName: string) => {
+        if (window.confirm(`Are you sure you want to wipe all data for operative ${operativeName}? This action is irreversible.`)) {
+            await wipeOperative(operativeId);
+            fetchOperatives();
+        }
     };
 
     const StatusIndicator: React.FC<{ status: string }> = ({ status }) => {
-        const color = status === 'Online' ? 'bg-green-500' : status === 'Away' ? 'bg-yellow-500' : 'bg-gray-500';
+        const color = status === 'Online' ? 'bg-green-500' : status === 'Away' ? 'bg-yellow-500' : status === 'Locked' ? 'bg-orange-500' : 'bg-gray-500';
         return (
             <div className="flex items-center">
                 <span className={`h-2.5 w-2.5 rounded-full ${color} mr-2`}></span>
@@ -57,8 +66,8 @@ const OperativesView: React.FC = () => {
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300"><StatusIndicator status={op.status} /></td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{op.clearance}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                                        <button onClick={() => handleAction(op.name, 'Remote Lock')} className="text-yellow-400 hover:text-yellow-300">Lock App</button>
-                                        <button onClick={() => handleAction(op.name, 'Remote Wipe')} className="text-red-500 hover:text-red-400">Wipe Device</button>
+                                        <button onClick={() => handleLock(op.id)} className="text-yellow-400 hover:text-yellow-300">Lock App</button>
+                                        <button onClick={() => handleWipe(op.id, op.name)} className="text-red-500 hover:text-red-400">Wipe Device</button>
                                     </td>
                                 </tr>
                             ))
