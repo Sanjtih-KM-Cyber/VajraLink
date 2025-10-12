@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { HqView } from './HqLayout';
 import { getDashboardStats, getRecentThreats, getPendingRegistrations, approveRegistration, denyRegistration } from '../api';
 import { DashboardStats, Threat, PendingRegistration } from '../../common/types';
+import { VectorMap } from '@south-paw/react-vector-maps';
+import world from '@south-paw/react-vector-maps/maps/json/world-merc.json';
 
 const StatCard: React.FC<{ title: string; value: string | number; trend?: string; icon: React.ReactElement; isLoading: boolean; }> = ({ title, value, trend, icon, isLoading }) => (
     <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
@@ -53,7 +55,8 @@ const DashboardView: React.FC<{setView: (view: HqView) => void}> = ({ setView })
     
     const handleApprove = async (username: string) => {
         await approveRegistration(username);
-        fetchData(); // Refetch all data to update the dashboard
+        setPending(current => current.filter(p => p.username !== username));
+        fetchData();
     };
 
     const handleDeny = async (username: string) => {
@@ -86,7 +89,7 @@ const DashboardView: React.FC<{setView: (view: HqView) => void}> = ({ setView })
                 <div className="lg:col-span-2 bg-gray-800 p-6 rounded-lg border border-gray-700">
                     <h2 className="font-bold text-white text-lg">Global Operative Distribution</h2>
                     <div className="mt-4 bg-gray-900 rounded-lg p-4 flex items-center justify-center h-80">
-                         <img src="https://storage.googleapis.com/aistudio-project-files/f1a5ba43-a67b-4835-961f-442b3112469d/world_map.svg" alt="World map with operative locations" className="max-h-full object-contain" />
+                         <VectorMap {...world} layerProps={{ fill: '#4a5568', stroke: '#2d3748' }} style={{ height: '100%', width: '100%' }} />
                     </div>
                 </div>
                 <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 flex flex-col">

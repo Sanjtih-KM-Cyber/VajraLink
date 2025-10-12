@@ -3,13 +3,20 @@ import Sidebar, { ChatInfo, DmChatInfo } from './Sidebar';
 import ChatScreen from './ChatScreen';
 import UserInfoPanel from './UserInfoPanel';
 import GroupInfoPanel from './GroupInfoPanel'; // Import the new component
-import { getContactsForUser, getGroupsForUser, getOperativeProfile, setStatusVisibility, updateOperativeStatus } from '../hq/api';
+import { getContactsForUser, getGroupsForUser, getOperativeProfile, setStatusVisibility, updateOperativeStatus, triggerDuressAlert } from '../hq/api';
 import { Operative, Group, OperativeStatus } from '../common/types';
 
 type Theme = 'light' | 'dark';
 
-// In a real app, this would come from the auth context
-const CURRENT_USER = 'agent_zero';
+interface DashboardProps {
+  onScreenshotAttempt: () => void;
+  onLogout: () => void;
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  inactivityDuration: number;
+  setInactivityDuration: (duration: number) => void;
+  currentUserId: string;
+}
 
 const SettingsMenu: React.FC<{
     isOpen: boolean;
@@ -122,6 +129,7 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = (props) => {
   const [chats, setChats] = useState<ChatInfo[]>([]);
   const [dms, setDms] = useState<DmChatInfo[]>([]);
+  const [familyChats, setFamilyChats] = useState<ChatInfo[]>([]);
   const [currentUserProfile, setCurrentUserProfile] = useState<Operative | null>(null);
   const [selectedChat, setSelectedChat] = useState<ChatInfo | DmChatInfo | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -130,12 +138,14 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
   const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [complaintCount, setComplaintCount] = useState(0);
   const [showHqAlert, setShowHqAlert] = useState(false);
+  const [screenshotAttempts, setScreenshotAttempts] = useState(0);
+  const socketRef = useRef<WebSocket | null>(null);
   
   const loadInitialData = useCallback(async () => {
       const [userGroups, userContacts, userProfile] = await Promise.all([
-          getGroupsForUser(CURRENT_USER),
-          getContactsForUser(CURRENT_USER),
-          getOperativeProfile(CURRENT_USER)
+          getGroupsForUser(currentUserId),
+          getContactsForUser(currentUserId),
+          getOperativeProfile(currentUserId)
       ]);
 
       setCurrentUserProfile(userProfile);
@@ -158,7 +168,25 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
   useEffect(() => {
     loadInitialData();
-  }, []);
+
+    socketRef.current = new WebSocket(`ws://localhost:3001?userId=${currentUserId}`);
+
+    socketRef.current.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        // Handle incoming messages
+    };
+
+    return () => {
+        socketRef.current?.close();
+    };
+  }, [loadInitialData, currentUserId]);
+
+  const handleAccountLockout = async () => {
+    if (!currentUserProfile) return;
+    await updateOperativeStatus(currentUserProfile.id, 'Locked');
+    await triggerDuressAlert(currentUserProfile.id, null, 'Multiple screenshot attempts detected. Account locked.');
+    props.onLogout();
+  };
 
   useEffect(() => {
     const preventRightClick = (e: MouseEvent) => e.preventDefault();
@@ -170,6 +198,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         (e.ctrlKey && e.key === 'PrintScreen')
       ) {
         props.onScreenshotAttempt();
+        setScreenshotAttempts(prev => prev + 1);
       }
     };
 
@@ -180,6 +209,12 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
       document.removeEventListener('keydown', detectScreenshot);
     };
   }, [props.onScreenshotAttempt]);
+
+  useEffect(() => {
+    if (screenshotAttempts > 1) {
+      handleAccountLockout();
+    }
+  }, [screenshotAttempts, handleAccountLockout]);
 
   useEffect(() => {
     if (complaintCount > 2 && !showHqAlert) {
@@ -198,6 +233,27 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
       if (!currentUserProfile) return;
       await updateOperativeStatus(currentUserProfile.id, newStatus);
       setCurrentUserProfile(prev => prev ? { ...prev, status: newStatus } : null);
+  };
+
+  const handleProfilePictureUpload = async (file: File) => {
+    if (!currentUserProfile) return;
+
+    const formData = new FormData();
+    formData.append('pfp', file);
+
+    const token = localStorage.getItem('vajralink_token');
+    const response = await fetch(`/api/operatives/${currentUserProfile.id}/pfp`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+    });
+
+    if (response.ok) {
+        const { pfpUrl } = await response.json();
+        setCurrentUserProfile(prev => prev ? { ...prev, pfp: pfpUrl } : null);
+    }
   };
 
   const handleAddGroup = (newGroup: ChatInfo) => {
@@ -237,6 +293,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
       <Sidebar 
         chats={chats}
         dms={dms}
+        familyChats={familyChats}
         onChatSelect={handleSelectChat}
         onAddGroup={handleAddGroup}
         isCollapsed={isSidebarCollapsed}
@@ -245,6 +302,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         activeChatId={selectedChat.id}
         currentUserProfile={currentUserProfile}
         onStatusChange={handleStatusChange}
+        onProfilePictureUpload={handleProfilePictureUpload}
       />
       <SettingsMenu 
         {...props} 
@@ -266,6 +324,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
           chatInfo={selectedChat}
           onHeaderClick={handleHeaderClick}
           onReportFiled={handleReportFiled}
+          socket={socketRef.current}
         />
         {isUserInfoPanelOpen && selectedDmInfo && (
             <UserInfoPanel user={selectedDmInfo} onClose={() => setUserInfoPanelOpen(false)} />

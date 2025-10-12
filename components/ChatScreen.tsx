@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatInfo, DmChatInfo } from './Sidebar';
 import { Message } from '../common/types';
+import SimplePeer from 'simple-peer';
+import CallModal from './CallModal';
 
 // --- New "Weird" Encryption/Decryption ---
 const CIPHER_CONFIG = {
@@ -194,6 +196,7 @@ interface ChatScreenProps {
   chatInfo: ChatInfo | DmChatInfo;
   onHeaderClick: () => void;
   onReportFiled: () => void;
+  socket: WebSocket | null;
 }
 
 const EMOJIS = ['😀', '😂', '👍', '🔥', '❤️', '🙏', '🎉', '🚀', '👀', '💯'];
@@ -428,96 +431,7 @@ const FileAttachment: React.FC<{ fileName: string, fileSize: string }> = ({ file
   );
 };
 
-const CallScreen: React.FC<{ user: ChatInfo | DmChatInfo; type: 'video' | 'voice'; onEnd: () => void; }> = ({ user, type, onEnd }) => {
-    const [timer, setTimer] = useState(0);
-    const [isMuted, setIsMuted] = useState(false);
-    const [isCameraOff, setIsCameraOff] = useState(type === 'voice');
-    
-    const localStreamRef = useRef<MediaStream | null>(null);
-    const localVideoRef = useRef<HTMLVideoElement>(null);
-    const remoteVideoRef = useRef<HTMLVideoElement>(null);
-
-    useEffect(() => {
-        const callTimer = setInterval(() => setTimer(t => t + 1), 1000);
-
-        const startMedia = async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: type === 'video',
-                    audio: true,
-                });
-                localStreamRef.current = stream;
-                if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-                if (remoteVideoRef.current) remoteVideoRef.current.srcObject = stream; // Loopback for simulation
-            } catch (err) {
-                console.error("Error accessing media devices.", err);
-                alert("Could not access camera or microphone. Please check permissions.");
-                onEnd();
-            }
-        };
-        startMedia();
-
-        return () => {
-            clearInterval(callTimer);
-            localStreamRef.current?.getTracks().forEach(track => track.stop());
-        };
-    }, [type, onEnd]);
-
-    const toggleMute = () => {
-        localStreamRef.current?.getAudioTracks().forEach(track => {
-            track.enabled = !track.enabled;
-            setIsMuted(!track.enabled);
-        });
-    };
-    
-    const toggleCamera = () => {
-        if (type === 'voice') return;
-        localStreamRef.current?.getVideoTracks().forEach(track => {
-            track.enabled = !track.enabled;
-            setIsCameraOff(!track.enabled);
-        });
-    };
-
-    return (
-        <div className="absolute inset-0 bg-gray-900 z-50 flex flex-col items-center justify-between text-white overflow-hidden">
-            {/* Remote Video (main view) */}
-            <video ref={remoteVideoRef} autoPlay playsInline className={`w-full h-full object-cover absolute top-0 left-0 transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`}></video>
-            <div className="absolute inset-0 bg-black/50"></div>
-
-            {/* Local Video (PiP) */}
-            <video ref={localVideoRef} autoPlay muted playsInline className={`w-48 h-32 object-cover absolute top-8 right-8 rounded-lg shadow-2xl border-2 border-white/20 transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`}></video>
-            
-            <div className="relative z-10 flex flex-col items-center justify-between h-full w-full p-8">
-                <div className="text-center mt-16">
-                    <div className="h-24 w-24 rounded-full bg-teal-500 flex items-center justify-center text-4xl font-bold mx-auto ring-4 ring-white/20">
-                        {user.name.split(' ').map(n => n[0]).join('')}
-                    </div>
-                    <h1 className="text-3xl font-bold mt-4">{user.name}</h1>
-                    <p className="text-lg text-gray-300 mt-1">{type === 'video' ? 'Encrypted Video Call' : 'Encrypted Voice Call'}</p>
-                    <p className="text-2xl font-mono mt-4">{formatTime(timer)}</p>
-                </div>
-
-                <div className="flex items-center space-x-6">
-                    <button onClick={toggleMute} className={`p-4 rounded-full transition-colors ${isMuted ? 'bg-white text-gray-900' : 'bg-white/10 hover:bg-white/20'}`}>
-                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                    </button>
-                     {type === 'video' && (
-                        <button onClick={toggleCamera} className={`p-4 rounded-full transition-colors ${isCameraOff ? 'bg-white text-gray-900' : 'bg-white/10 hover:bg-white/20'}`}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                        </button>
-                     )}
-                    <button onClick={onEnd} className="p-5 bg-red-600 rounded-full hover:bg-red-500 shadow-lg scale-110">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2 2m-2-2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2z" /></svg>
-                    </button>
-                    <button className="p-4 bg-white/10 rounded-full hover:bg-white/20"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg></button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-
-const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onReportFiled }) => {
+const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onReportFiled, socket }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -528,12 +442,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [callInfo, setCallInfo] = useState<{type: 'voice' | 'video' } | null>(null);
   const [decryptedMessage, setDecryptedMessage] = useState<{id: number, text: string} | null>(null);
   const [uploadingFile, setUploadingFile] = useState<{ name: string; progress: number; size: string } | null>(null);
-  
   const [selectedCipher, setSelectedCipher] = useState<string | null>(null);
   const [showCipherPicker, setShowCipherPicker] = useState(false);
+  const [callState, setCallState] = useState<{ type: 'voice' | 'video', isReceivingCall: boolean, callData?: any } | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const peerRef = useRef<SimplePeer.Instance | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -545,7 +461,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
   const recordingTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // Duress Protocol Check
     const isDuress = sessionStorage.getItem('duressMode') === 'true';
     const messageSource = isDuress ? MOCK_DURESS_MESSAGES : MOCK_MESSAGES;
     setMessages(messageSource[chatInfo.id] || []);
@@ -566,6 +481,77 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
   useEffect(() => { setOpsecWarning(analyzeDraft(inputText)); }, [inputText]);
+
+  useEffect(() => {
+    if (socket) {
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'offer') {
+                setCallState({ type: data.callType, isReceivingCall: true, callData: data });
+            } else if (data.type === 'answer') {
+                peerRef.current?.signal(data.signal);
+            } else if (data.type === 'candidate') {
+                peerRef.current?.signal(data.signal);
+            } else if (data.type === 'hangup') {
+                hangUp();
+            }
+        };
+    }
+  }, [socket]);
+
+  const startCall = async (type: 'voice' | 'video') => {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true });
+    setLocalStream(stream);
+    setCallState({ type, isReceivingCall: false });
+
+    const peer = new SimplePeer({
+        initiator: true,
+        trickle: false,
+        stream,
+    });
+
+    peer.on('signal', (data) => {
+        socket?.send(JSON.stringify({ to: chatInfo.id, type: 'offer', callType: type, signal: data }));
+    });
+
+    peer.on('stream', (remoteStream) => {
+        setRemoteStream(remoteStream);
+    });
+
+    peerRef.current = peer;
+  };
+
+  const answerCall = async () => {
+    if (!callState?.callData) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ video: callState.type === 'video', audio: true });
+    setLocalStream(stream);
+
+    const peer = new SimplePeer({
+        initiator: false,
+        trickle: false,
+        stream,
+    });
+
+    peer.on('signal', (data) => {
+        socket?.send(JSON.stringify({ to: callState.callData.from, type: 'answer', signal: data }));
+    });
+
+    peer.on('stream', (remoteStream) => {
+        setRemoteStream(remoteStream);
+    });
+
+    peer.signal(callState.callData.signal);
+    peerRef.current = peer;
+    setCallState(prev => prev ? { ...prev, isReceivingCall: false } : null);
+  };
+
+  const hangUp = () => {
+    peerRef.current?.destroy();
+    socket?.send(JSON.stringify({ to: chatInfo.id, type: 'hangup' }));
+    setCallState(null);
+    setLocalStream(null);
+    setRemoteStream(null);
+  };
 
   const handleSend = () => {
     if (!inputText.trim()) return;
@@ -793,8 +779,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
             </div>
         </button>
         <div className="flex items-center space-x-2">
-            <button onClick={() => setCallInfo({type: 'voice'})} className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" /></svg></button>
-            <button onClick={() => setCallInfo({type: 'video'})} className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 001.553.832l3-2a1 1 0 000-1.664l-3-2z" /></svg></button>
+            <button onClick={() => startCall('voice')} className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" /></svg></button>
+            <button onClick={() => startCall('video')} className="p-2 text-gray-500 dark:text-gray-400 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 001.553.832l3-2a1 1 0 000-1.664l-3-2z" /></svg></button>
             <div className="relative">
                 <span className="absolute inset-y-0 left-0 flex items-center pl-3"><svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" /></svg></span>
                 <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search..." className="w-full pl-10 pr-4 py-2 bg-gray-200 dark:bg-gray-800 border border-transparent dark:border-gray-700 rounded-full text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500" aria-label="Search messages" />
@@ -940,7 +926,17 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
           </div>
         </div>
       </footer>
-      {callInfo && <CallScreen user={chatInfo} type={callInfo.type} onEnd={() => setCallInfo(null)} />}
+      {callState && (
+        <CallModal
+            isOpen={!!callState}
+            onClose={hangUp}
+            onAnswer={answerCall}
+            onReject={hangUp}
+            localStream={localStream}
+            remoteStream={remoteStream}
+            isReceivingCall={callState.isReceivingCall}
+        />
+      )}
     </div>
   );
 };

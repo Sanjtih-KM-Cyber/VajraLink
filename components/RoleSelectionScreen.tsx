@@ -1,10 +1,10 @@
 import React from 'react';
 
 interface RoleSelectionScreenProps {
-  onSelectOperative: () => void;
+  onSelectUser: () => void;
 }
 
-const RoleSelectionScreen: React.FC<RoleSelectionScreenProps> = ({ onSelectOperative }) => {
+const RoleSelectionScreen: React.FC<RoleSelectionScreenProps> = ({ onSelectUser }) => {
 
   const handleSelectHq = () => {
     window.location.href = '/hq/';
@@ -39,10 +39,10 @@ const RoleSelectionScreen: React.FC<RoleSelectionScreenProps> = ({ onSelectOpera
         </div>
         <div className="space-y-6">
             <Card 
-                title="Operative Login"
-                description="Access the secure communication messenger."
-                icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>}
-                onClick={onSelectOperative}
+                title="User Login"
+                description="Access the secure communication messenger for operatives and family."
+                icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.122-1.28-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.122-1.28.356-1.857m0 0a5.002 5.002 0 019.288 0M12 14a4 4 0 100-8 4 4 0 000 8zm0 0c1.657 0 3 2.686 3 6H9c0-3.314 1.343-6 3-6z"></path></svg>}
+                onClick={onSelectUser}
             />
             <Card 
                 title="HQ Command Login"

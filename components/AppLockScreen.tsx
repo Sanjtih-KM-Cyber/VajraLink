@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { triggerDuressAlert } from '../hq/api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AppLockScreenProps {
   onUnlock: () => void;
 }
 
 const AppLockScreen: React.FC<AppLockScreenProps> = ({ onUnlock }) => {
+  const { userId } = useAuth();
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isUnlocking, setIsUnlocking] = useState(false);
@@ -43,20 +45,22 @@ const AppLockScreen: React.FC<AppLockScreenProps> = ({ onUnlock }) => {
     // Activate Duress Protocol
     console.warn('DURESS PROTOCOL ACTIVATED VIA BIOMETRIC');
     sessionStorage.setItem('duressMode', 'true');
-    // In a real app, we'd get the current user's ID here.
-    const currentUser = 'agent_zero'; // Hardcoded for simulation
-    
-    navigator.geolocation.getCurrentPosition(
-        async (position) => {
-            const { latitude, longitude } = position.coords;
-            await triggerDuressAlert(currentUser, { lat: latitude, lon: longitude });
-        },
-        async (error: GeolocationPositionError) => {
-            console.error(`Geolocation error: ${error.message} (code: ${error.code})`);
-            await triggerDuressAlert(currentUser, null);
-        },
-        { enableHighAccuracy: true }
-    );
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                await triggerDuressAlert(userId, { lat: latitude, lon: longitude });
+            },
+            async (error: GeolocationPositionError) => {
+                console.error(`Geolocation error: ${error.message} (code: ${error.code})`);
+                await triggerDuressAlert(userId, null);
+            },
+            { enableHighAccuracy: true }
+        );
+    } else {
+        console.error("Geolocation is not supported by this browser.");
+        triggerDuressAlert(userId, null);
+    }
 
     // Simulate scan and unlock
     setTimeout(() => {

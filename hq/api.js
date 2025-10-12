@@ -75,8 +75,8 @@ export const SECURITY_QUESTIONS = [
 export const submitSecurityAnswer = (username, answer) =>
     apiRequest('/submit-security-answer', { method: 'POST', body: JSON.stringify({ username, answer }) });
 
-export const triggerDuressAlert = (username, location) =>
-    apiRequest('/duress-alert', { method: 'POST', body: JSON.stringify({ username, location }) });
+export const triggerDuressAlert = (username, location, message) =>
+    apiRequest('/duress-alert', { method: 'POST', body: JSON.stringify({ username, location, message }) });
 
 
 // --- HQ Data API ---
@@ -158,3 +158,14 @@ export const approveConnectionRequest = (requestId) =>
 
 export const denyConnectionRequest = (requestId) =>
     apiRequest(`/connections/${requestId}/deny`, { method: 'POST' });
+
+// --- Family API ---
+export const getFamilyMembers = (username) => apiRequest(`/family/${username}/members`);
+export const getFamilyGroups = (username) => apiRequest(`/family/${username}/groups`);
+export const getPendingFamilyRegistrations = () => apiRequest('/family/registrations/pending');
+export const approveFamilyRegistration = (username) => apiRequest(`/family/registrations/${username}/approve`, { method: 'POST' });
+export const denyFamilyRegistration = (username) => apiRequest(`/family/registrations/${username}/deny`, { method: 'POST' });
+
+// --- Operative Actions ---
+export const lockOperative = (username) => apiRequest(`/operatives/${username}/lock`, { method: 'POST' });
+export const wipeOperative = (username) => apiRequest(`/operatives/${username}/wipe`, { method: 'DELETE' });

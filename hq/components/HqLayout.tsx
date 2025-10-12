@@ -5,8 +5,9 @@ import DashboardView from './DashboardView';
 import OperativesView from './OperativesView';
 import ThreatsView from './ThreatsView';
 import ConnectionRequestsView from './ConnectionRequestsView';
+import FamilyRegistrationsView from './FamilyRegistrationsView';
 
-export type HqView = 'dashboard' | 'operatives' | 'threats' | 'connectionRequests' | 'settings';
+export type HqView = 'dashboard' | 'operatives' | 'threats' | 'connectionRequests' | 'familyRegistrations' | 'settings';
 
 interface HqLayoutProps {
     onLogout: () => void;
@@ -25,6 +26,8 @@ const HqLayout: React.FC<HqLayoutProps> = ({ onLogout }) => {
                 return <ThreatsView />;
             case 'connectionRequests':
                 return <ConnectionRequestsView />;
+            case 'familyRegistrations':
+                return <FamilyRegistrationsView />;
             default:
                 return <DashboardView setView={setView} />;
         }

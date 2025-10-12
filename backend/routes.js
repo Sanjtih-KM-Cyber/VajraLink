@@ -3,6 +3,8 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { getDb } = require('./database');
 const router = express.Router();
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/' });
 
 const SALT_ROUNDS = 10;
 
@@ -15,6 +17,8 @@ const getCollections = () => {
         groups: db.collection('groups'),
         threats: db.collection('threats'),
         pendingRegistrations: db.collection('pendingRegistrations'),
+        pendingFamilyRegistrations: db.collection('pendingFamilyRegistrations'),
+        familyMembers: db.collection('familyMembers'),
         connectionRequests: db.collection('connectionRequests'),
     };
 };
@@ -118,6 +122,16 @@ router.post('/register', async (req, res) => {
     res.status(201).json({ success: true });
 });
 
+router.post('/register-family', async (req, res) => {
+    const { pendingFamilyRegistrations } = getCollections();
+    const newRequest = {
+        ...req.body,
+        requestDate: new Date().toISOString().split('T')[0],
+    };
+    await pendingFamilyRegistrations.insertOne(newRequest);
+    res.status(201).json({ success: true });
+});
+
 router.post('/check-username', async (req, res) => {
     const { username } = req.body;
     const { users, pendingRegistrations } = getCollections();
@@ -158,8 +172,9 @@ router.use(authenticateToken);
 
 router.post('/duress-alert', async (req, res) => {
     const { threats } = getCollections();
-    const { username, location } = req.body;
+    const { username, location, message } = req.body;
     const locationInfo = location ? `at geo-coordinates ${location.lat.toFixed(4)}, ${location.lon.toFixed(4)}` : `(location unavailable)`;
+    const details = message ? message : `Operative ${username} has activated a duress protocol ${locationInfo}. Immediate action required. Operative may be compromised.`;
     const newThreat = {
         id: Date.now(),
         type: 'DURESS ALERT (CODE RED SKY)',
@@ -167,7 +182,7 @@ router.post('/duress-alert', async (req, res) => {
         reportedBy: username,
         timestamp: new Date().toISOString().replace('T', ' ').split('.')[0] + ' UTC',
         status: 'Pending',
-        details: `Operative ${username} has activated a duress protocol ${locationInfo}. Immediate action required. Operative may be compromised.`
+        details,
     };
     await threats.insertOne(newThreat);
     res.json({ success: true });
@@ -509,5 +524,128 @@ router.delete('/groups/:id', async (req, res) => {
     res.json({ success: true });
 });
 
+router.post('/operatives/:username/lock', async (req, res) => {
+    const { username } = req.params;
+    const { operatives } = getCollections();
+    const result = await operatives.updateOne({ id: username }, { $set: { status: 'Locked' } });
+    if (result.matchedCount > 0) {
+        res.json({ success: true });
+    } else {
+        res.status(404).json({ success: false, error: 'Operative not found' });
+    }
+});
+
+router.delete('/operatives/:username/wipe', async (req, res) => {
+    const { username } = req.params;
+    const { users, operatives } = getCollections();
+    const userResult = await users.deleteOne({ username });
+    const operativeResult = await operatives.deleteOne({ id: username });
+    if (userResult.deletedCount > 0 || operativeResult.deletedCount > 0) {
+        res.json({ success: true });
+    } else {
+        res.status(404).json({ success: false, error: 'Operative not found' });
+    }
+});
+
+router.post('/operatives/:username/pfp', upload.single('pfp'), async (req, res) => {
+    const { username } = req.params;
+    const { operatives } = getCollections();
+    const pfpUrl = `/uploads/${req.file.filename}`;
+    const result = await operatives.updateOne({ id: username }, { $set: { pfp: pfpUrl } });
+    if (result.matchedCount > 0) {
+        res.json({ success: true, pfpUrl });
+    } else {
+        res.status(404).json({ success: false, error: 'Operative not found' });
+    }
+});
+
+router.post('/family/groups', async (req, res) => {
+    const { name, members } = req.body;
+    const { groups } = getCollections();
+    const newGroup = {
+        id: name.toLowerCase().replace(/\s/g, '-') + '-' + Date.now(),
+        name,
+        members,
+        isFamilyGroup: true,
+        createdAt: new Date().toISOString(),
+    };
+    await groups.insertOne(newGroup);
+    res.status(201).json(newGroup);
+});
+
+router.get('/family/:username/members', async (req, res) => {
+    const { username } = req.params;
+    const { familyMembers } = getCollections();
+    // This is a simplified logic. In a real app, you would have a more complex way to determine family members.
+    const members = await familyMembers.find({ relatedTo: username }).toArray();
+    res.json(members);
+});
+
+router.get('/family/:username/groups', async (req, res) => {
+    const { username } = req.params;
+    const { groups } = getCollections();
+    const familyGroups = await groups.find({ members: username, isFamilyGroup: true }).toArray();
+    res.json(familyGroups);
+});
+
+router.post('/family/login', async (req, res) => {
+    const { username, password } = req.body;
+    const { familyMembers } = getCollections();
+    const familyMember = await familyMembers.findOne({ username });
+
+    if (!familyMember) {
+        return res.status(401).json({ success: false, error: 'Invalid credentials.' });
+    }
+
+    const isMatch = await bcrypt.compare(password, familyMember.password);
+
+    if (isMatch) {
+        const token = jwt.sign({ username: familyMember.username, role: 'family' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        res.json({ success: true, token, userId: familyMember.username });
+    } else {
+        res.status(401).json({ success: false, error: 'Invalid credentials.' });
+    }
+});
+
+router.post('/family/:username/pfp', upload.single('pfp'), async (req, res) => {
+    const { username } = req.params;
+    const { familyMembers } = getCollections();
+    const pfpUrl = `/uploads/${req.file.filename}`;
+    const result = await familyMembers.updateOne({ username }, { $set: { pfp: pfpUrl } });
+    if (result.matchedCount > 0) {
+        res.json({ success: true, pfpUrl });
+    } else {
+        res.status(404).json({ success: false, error: 'Family member not found' });
+    }
+});
+
+router.get('/family/registrations/pending', async (req, res) => {
+    const { pendingFamilyRegistrations } = getCollections();
+    res.json(await pendingFamilyRegistrations.find().toArray());
+});
+
+router.post('/family/registrations/:username/approve', async (req, res) => {
+    const { username } = req.params;
+    const { pendingFamilyRegistrations, familyMembers } = getCollections();
+    const pendingUser = await pendingFamilyRegistrations.findOneAndDelete({ username });
+    if (!pendingUser) return res.status(404).json({ success: false, error: 'Registration not found' });
+
+    const hashedPassword = await bcrypt.hash(pendingUser.password || 'password123', SALT_ROUNDS);
+
+    await familyMembers.insertOne({
+        username: pendingUser.username,
+        password: hashedPassword,
+        ...pendingUser
+    });
+
+    res.json({ success: true });
+});
+
+router.post('/family/registrations/:username/deny', async (req, res) => {
+    const { username } = req.params;
+    const { pendingFamilyRegistrations } = getCollections();
+    await pendingFamilyRegistrations.deleteOne({ username });
+    res.json({ success: true });
+});
 
 module.exports = router;
