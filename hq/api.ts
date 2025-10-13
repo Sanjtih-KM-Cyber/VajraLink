@@ -135,6 +135,9 @@ export const getGroupDetails = (groupId: string): Promise<Group | null> =>
 export const addGroup = (name: string, admin: string, members: string[]): Promise<Group> =>
     apiRequest('/groups', { method: 'POST', body: JSON.stringify({ name, admin, members }) });
 
+export const addFamilyGroup = (name: string, admin: string, members: string[]): Promise<Group> =>
+    apiRequest('/family/groups', { method: 'POST', body: JSON.stringify({ name, admin, members }) });
+
 export const addMemberToGroup = (groupId: string, memberId: string, requesterId: string): Promise<{ success: boolean }> =>
     apiRequest(`/groups/${groupId}/members`, { method: 'POST', body: JSON.stringify({ memberId, requesterId }) });
 

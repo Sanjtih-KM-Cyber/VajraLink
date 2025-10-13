@@ -486,18 +486,42 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
     if (socket) {
         socket.onmessage = (event) => {
             const data = JSON.parse(event.data);
+
+            // Existing call handling
             if (data.type === 'offer') {
                 setCallState({ type: data.callType, isReceivingCall: true, callData: data });
-            } else if (data.type === 'answer') {
+                return;
+            }
+            if (data.type === 'answer') {
                 peerRef.current?.signal(data.signal);
-            } else if (data.type === 'candidate') {
+                return;
+            }
+            if (data.type === 'candidate') {
                 peerRef.current?.signal(data.signal);
-            } else if (data.type === 'hangup') {
+                return;
+            }
+            if (data.type === 'hangup') {
                 hangUp();
+                return;
+            }
+
+            // New message handling
+            const isGroupMessage = chatInfo.type !== 'Direct Message' && data.groupId === chatInfo.id;
+            const isDirectMessage = chatInfo.type === 'Direct Message' && data.from === chatInfo.id;
+
+            if (isGroupMessage || isDirectMessage) {
+                const newMessage: Message = {
+                    id: Date.now(),
+                    text: data.text,
+                    sender: data.from,
+                    timestamp: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+                    // attachments can be added here if needed
+                };
+                setMessages(prevMessages => [...prevMessages, newMessage]);
             }
         };
     }
-  }, [socket]);
+  }, [socket, chatInfo.id, chatInfo.type]);
 
   const startCall = async (type: 'voice' | 'video') => {
     const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true });
@@ -554,7 +578,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
   };
 
   const handleSend = () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !socket) return;
     if (opsecWarning && !selectedCipher) return;
 
     let textToSend = inputText;
@@ -565,17 +589,27 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
         }
     }
 
+    const messagePayload = {
+        to: chatInfo.id,
+        text: textToSend,
+        isGroup: chatInfo.type !== 'Direct Message',
+        timestamp: new Date().toISOString(),
+    };
+
+    socket.send(JSON.stringify(messagePayload));
+
+    // Add message to local state immediately for responsiveness
     const newMessage: Message = {
       id: Date.now(),
       text: textToSend,
-      sender: 'user',
+      sender: 'user', // This should be the current user's ID
       timestamp: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
       replyingTo: replyingTo || undefined
     };
     setMessages([...messages, newMessage]);
     setInputText('');
     setReplyingTo(null);
-    setSelectedCipher(null); // Reset cipher after sending
+    setSelectedCipher(null);
   };
 
   const handleStartRecording = async () => {

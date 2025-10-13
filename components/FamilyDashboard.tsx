@@ -1,164 +1,97 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { getFamilyMembers, getFamilyGroups } from '../hq/api';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import Sidebar, { ChatInfo } from './Sidebar';
 import ChatScreen from './ChatScreen';
+import { getGroupsForUser, addFamilyGroup } from '../hq/api';
+import { Group }from '../common/types';
 import { useAuth } from '../contexts/AuthContext';
 
-const CreateGroupModal: React.FC<{ onClose: () => void; onCreate: (name: string, members: string[]) => void; familyMembers: any[] }> = ({ onClose, onCreate, familyMembers }) => {
-    const [name, setName] = useState('');
-    const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+interface FamilyDashboardProps {
+  onLogout: () => void;
+}
 
-    const handleToggleMember = (memberId: string) => {
-        setSelectedMembers(prev =>
-            prev.includes(memberId)
-                ? prev.filter(id => id !== memberId)
-                : [...prev, memberId]
-        );
-    };
+const groupToChatInfo = (group: Group): ChatInfo => ({
+    id: group.id,
+    name: group.name,
+    type: 'Family Channel',
+    icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.084-1.28-.24-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.084-1.28.24-1.857m11.52 1.857a3 3 0 00-5.356-1.857m0 0A3 3 0 017 16.143m5.657 1.857l-2.829-5.657a3 3 0 015.657 0l-2.829 5.657z" /></svg>,
+});
 
-    const handleSubmit = () => {
-        onCreate(name, selectedMembers);
-        onClose();
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-            <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md text-white">
-                <h2 className="text-xl font-bold mb-4">Create New Group</h2>
-                <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Group Name"
-                    className="w-full mt-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-                <div className="mt-4">
-                    <h3 className="text-lg font-semibold mb-2">Select Members</h3>
-                    {familyMembers.map(member => (
-                        <label key={member.id} className="flex items-center p-2 rounded-md hover:bg-gray-700">
-                            <input type="checkbox" checked={selectedMembers.includes(member.id)} onChange={() => handleToggleMember(member.id)} className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-teal-600 focus:ring-teal-500" />
-                            <span className="ml-3">{member.name}</span>
-                        </label>
-                    ))}
-                </div>
-                <div className="flex justify-end space-x-3 mt-8">
-                    <button onClick={onClose} className="px-4 py-2 rounded-md text-sm font-semibold text-gray-300 bg-gray-700 hover:bg-gray-600">Cancel</button>
-                    <button onClick={handleSubmit} disabled={!name.trim() || selectedMembers.length === 0} className="px-4 py-2 rounded-md text-sm font-semibold text-white bg-teal-600 hover:bg-teal-500 disabled:bg-gray-500 disabled:cursor-not-allowed">Create</button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const FamilyDashboard: React.FC = () => {
+const FamilyDashboard: React.FC<FamilyDashboardProps> = ({ onLogout }) => {
+  const [chats, setChats] = useState<ChatInfo[]>([]);
+  const [selectedChat, setSelectedChat] = useState<ChatInfo | null>(null);
   const { userId } = useAuth();
-  const currentUserId = userId;
-  const [selectedChat, setSelectedChat] = useState<any>(null);
-  const [familyMembers, setFamilyMembers] = useState<any[]>([]);
-  const [familyGroups, setFamilyGroups] = useState<any[]>([]);
-  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
-  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
+
+  const loadInitialData = useCallback(async () => {
+      if (userId) {
+          const userGroups = await getGroupsForUser(userId);
+          const groupChats = userGroups.map(groupToChatInfo);
+          setChats(groupChats);
+          if (!selectedChat && groupChats.length > 0) {
+              setSelectedChat(groupChats[0]);
+          }
+      }
+  }, [userId, selectedChat]);
 
   useEffect(() => {
-    if (currentUserId) {
-        const fetchData = async () => {
-            const members = await getFamilyMembers(currentUserId);
-            const groups = await getFamilyGroups(currentUserId);
-            setFamilyMembers(members);
-            setFamilyGroups(groups);
-            const profile = members.find(m => m.username === currentUserId);
-            setCurrentUserProfile(profile);
-        };
-        fetchData();
-
-        socketRef.current = new WebSocket(`ws://localhost:3001?userId=${currentUserId}`);
-
-        socketRef.current.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            // Handle incoming messages
-        };
-
-        return () => {
-            socketRef.current?.close();
-        };
+    loadInitialData();
+    if (userId) {
+        socketRef.current = new WebSocket(`ws://localhost:3001?userId=${userId}`);
     }
-  }, [currentUserId]);
+    return () => {
+        socketRef.current?.close();
+    };
+  }, [userId, loadInitialData]);
 
-  const handleCreateGroup = async (name: string, members: string[]) => {
-    const response = await fetch('/api/family/groups', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name, members: [...members, currentUserId] }),
-    });
-    if (response.ok) {
-        const newGroup = await response.json();
-        setFamilyGroups(prev => [...prev, newGroup]);
-    }
+  const handleAddGroup = async (name: string, members: string[]) => {
+      if (userId) {
+        const newGroup = await addFamilyGroup(name, userId, members);
+        const newChat = groupToChatInfo(newGroup);
+        setChats(prevChats => [...prevChats, newChat]);
+        setSelectedChat(newChat);
+      }
   };
 
-  const handleProfilePictureUpload = async (file: File) => {
-    if (!currentUserProfile) return;
-
-    const formData = new FormData();
-    formData.append('pfp', file);
-
-    const token = localStorage.getItem('vajralink_token');
-    const response = await fetch(`/api/family/${currentUserProfile.username}/pfp`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-        },
-        body: formData,
-    });
-
-    if (response.ok) {
-        const { pfpUrl } = await response.json();
-        setCurrentUserProfile((prev: any) => (prev ? { ...prev, pfp: pfpUrl } : null));
-    }
-  };
+  if (!userId) {
+    return <div>Loading...</div>;
+  }
 
   return (
-    <div className="flex h-screen bg-gray-900 text-white">
-        {showCreateGroupModal && <CreateGroupModal onClose={() => setShowCreateGroupModal(false)} onCreate={handleCreateGroup} familyMembers={familyMembers} />}
-      <div className="w-80 flex-shrink-0 bg-gray-950 p-4">
-        <h2 className="text-2xl font-bold mb-4">Family Portal</h2>
-        <div className="mb-8">
-          <h3 className="text-lg font-semibold mb-2">Family Members</h3>
-          <ul>
-            {familyMembers.map(member => (
-              <li key={member.id}>
-                <button onClick={() => setSelectedChat(member)} className="w-full text-left p-2 rounded-md hover:bg-gray-800">
-                  {member.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div>
-            <div className="flex justify-between items-center mb-2">
-                <h3 className="text-lg font-semibold">Groups</h3>
-                <button onClick={() => setShowCreateGroupModal(true)} className="text-teal-400 hover:text-teal-300">+</button>
-            </div>
-          <ul>
-            {familyGroups.map(group => (
-              <li key={group.id}>
-                <button onClick={() => setSelectedChat(group)} className="w-full text-left p-2 rounded-md hover:bg-gray-800">
-                  {group.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-      <div className="flex-1 flex items-center justify-center">
-        {selectedChat ? (
-          <ChatScreen chatInfo={selectedChat} onHeaderClick={() => {}} onReportFiled={() => {}} socket={socketRef.current} />
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar
+        chats={chats}
+        dms={[]}
+        familyChats={[]}
+        onChatSelect={setSelectedChat}
+        onAddGroup={() => {
+            const groupName = prompt("Enter group name:");
+            if (groupName) {
+                const members = prompt("Enter member usernames (comma-separated):");
+                if (members) {
+                    handleAddGroup(groupName, members.split(',').map(m => m.trim()));
+                }
+            }
+        }}
+        isCollapsed={false}
+        onToggle={() => {}}
+        onToggleSettings={() => {}}
+        activeChatId={selectedChat?.id || ''}
+        currentUserProfile={{id: userId, name: userId, rank: 'Family', status: 'Online', clearance: 0, joinDate: '', isStatusVisible: true}}
+        onStatusChange={() => {}}
+        onProfilePictureUpload={() => {}}
+      />
+      <div className="flex-1 flex flex-col">
+        {selectedChat && socketRef.current ? (
+          <ChatScreen
+            key={selectedChat.id}
+            chatInfo={selectedChat}
+            onHeaderClick={() => {}}
+            onReportFiled={() => {}}
+            socket={socketRef.current}
+          />
         ) : (
-          <div className="text-center">
-            <h1 className="text-4xl font-bold">Welcome</h1>
-            <p className="mt-4 text-lg text-gray-400">Select a family member or group to start chatting.</p>
+          <div className="flex-1 flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+            <p className="text-gray-500">Select a chat to start messaging</p>
           </div>
         )}
       </div>

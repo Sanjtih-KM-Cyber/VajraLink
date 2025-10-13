@@ -117,16 +117,7 @@ const operativeToDmChatInfo = (operative: Operative): DmChatInfo => {
 };
 
 
-interface DashboardProps {
-  onScreenshotAttempt: () => void;
-  onLogout: () => void;
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
-  inactivityDuration: number;
-  setInactivityDuration: (duration: number) => void;
-}
-
-const Dashboard: React.FC<DashboardProps> = (props) => {
+const Dashboard: React.FC<DashboardProps> = ({ currentUserId, ...props }) => {
   const [chats, setChats] = useState<ChatInfo[]>([]);
   const [dms, setDms] = useState<DmChatInfo[]>([]);
   const [familyChats, setFamilyChats] = useState<ChatInfo[]>([]);
@@ -163,7 +154,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         const newSelected = [...groupChats, ...dmChats].find(c => c.id === selectedChat.id);
         setSelectedChat(newSelected || groupChats[0] || dmChats[0] || null);
       }
-  }, [selectedChat]);
+  }, [selectedChat, currentUserId]);
 
 
   useEffect(() => {
@@ -332,7 +323,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         {isGroupInfoPanelOpen && selectedChat && (
             <GroupInfoPanel 
                 chatInfo={selectedChat} 
-                currentUser={CURRENT_USER}
+                currentUser={currentUserId}
                 onClose={() => setGroupInfoPanelOpen(false)}
                 onGroupUpdate={loadInitialData}
                 onSelectChat={setSelectedChat}
