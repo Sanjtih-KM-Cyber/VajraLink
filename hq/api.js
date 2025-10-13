@@ -145,6 +145,9 @@ export const leaveGroup = (groupId, memberId) =>
 export const deleteGroup = (groupId, requesterId) =>
     apiRequest(`/groups/${groupId}`, { method: 'DELETE', body: JSON.stringify({ requesterId }) });
 
+export const addFamilyGroup = (name, admin, members) =>
+    apiRequest('/family/groups', { method: 'POST', body: JSON.stringify({ name, admin, members }) });
+
 
 // --- Connection Requests API ---
 export const getPendingConnectionRequests = () =>
@@ -162,7 +165,6 @@ export const denyConnectionRequest = (requestId) =>
 // --- Family API ---
 export const getFamilyMembers = (username) => apiRequest(`/family/${username}/members`);
 export const getFamilyGroups = (username) => apiRequest(`/family/${username}/groups`);
-export const addFamilyGroup = (name, admin, members) => apiRequest('/family/groups', { method: 'POST', body: JSON.stringify({ name, admin, members }) });
 export const getPendingFamilyRegistrations = () => apiRequest('/family/registrations/pending');
 export const approveFamilyRegistration = (username) => apiRequest(`/family/registrations/${username}/approve`, { method: 'POST' });
 export const denyFamilyRegistration = (username) => apiRequest(`/family/registrations/${username}/deny`, { method: 'POST' });
