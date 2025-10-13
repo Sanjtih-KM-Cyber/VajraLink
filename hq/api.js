@@ -145,6 +145,9 @@ export const leaveGroup = (groupId, memberId) =>
 export const deleteGroup = (groupId, requesterId) =>
     apiRequest(`/groups/${groupId}`, { method: 'DELETE', body: JSON.stringify({ requesterId }) });
 
+export const addFamilyGroup = (name, admin, members) =>
+    apiRequest('/family/groups', { method: 'POST', body: JSON.stringify({ name, admin, members }) });
+
 
 // --- Connection Requests API ---
 export const getPendingConnectionRequests = () =>
