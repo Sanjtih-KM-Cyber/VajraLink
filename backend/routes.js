@@ -560,14 +560,16 @@ router.post('/operatives/:username/pfp', upload.single('pfp'), async (req, res) 
 });
 
 router.post('/family/groups', async (req, res) => {
-    const { name, members } = req.body;
+    const { name, admin, members } = req.body;
     const { groups } = getCollections();
     const newGroup = {
         id: name.toLowerCase().replace(/\s/g, '-') + '-' + Date.now(),
         name,
-        members,
+        admin,
+        members: [...members, admin],
         isFamilyGroup: true,
         createdAt: new Date().toISOString(),
+        icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.084-1.28-.24-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.084-1.28.24-1.857m11.52 1.857a3 3 0 00-5.356-1.857m0 0A3 3 0 017 16.143m5.657 1.857l-2.829-5.657a3 3 0 015.657 0l-2.829 5.657z',
     };
     await groups.insertOne(newGroup);
     res.status(201).json(newGroup);
