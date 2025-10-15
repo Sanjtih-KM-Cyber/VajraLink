@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 
-const FamilyRegistrationForm: React.FC = () => {
+interface FamilyRegistrationFormProps {
+  onSwitchToLogin: () => void;
+}
+
+const FamilyRegistrationForm: React.FC<FamilyRegistrationFormProps> = ({ onSwitchToLogin }) => {
   const [formData, setFormData] = useState({
     operativeName: '',
     relationship: '',
@@ -116,6 +120,9 @@ const FamilyRegistrationForm: React.FC = () => {
             {isSubmitting ? 'Submitting...' : 'Send to HQ for Approval'}
           </button>
         </form>
+        <div className="mt-6 text-center text-sm text-gray-400">
+          Already have access? <button onClick={onSwitchToLogin} className="font-medium text-teal-500 hover:text-teal-400">Login here</button>
+        </div>
       </div>
     </div>
   );

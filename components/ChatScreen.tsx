@@ -506,10 +506,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
             }
 
             // New message handling
-            const isGroupMessage = chatInfo.type !== 'Direct Message' && data.groupId === chatInfo.id;
-            const isDirectMessage = chatInfo.type === 'Direct Message' && data.from === chatInfo.id;
+            const isRelevantMessage = (
+                (chatInfo.type !== 'Direct Message' && data.groupId === chatInfo.id) ||
+                (chatInfo.type === 'Direct Message' && (data.from === chatInfo.id || data.to === chatInfo.id))
+            ) && data.from !== 'user'; // Prevent receiving our own messages
 
-            if (isGroupMessage || isDirectMessage) {
+            if (isRelevantMessage) {
                 const newMessage: Message = {
                     id: Date.now(),
                     text: data.text,
@@ -521,7 +523,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
             }
         };
     }
-  }, [socket, chatInfo.id, chatInfo.type]);
+  }, [socket, chatInfo.id, chatInfo.type, hangUp]);
 
   const startCall = async (type: 'voice' | 'video') => {
     const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true });
@@ -530,7 +532,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
 
     const peer = new SimplePeer({
         initiator: true,
-        trickle: false,
+        trickle: true,
         stream,
     });
 
@@ -552,7 +554,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
 
     const peer = new SimplePeer({
         initiator: false,
-        trickle: false,
+        trickle: true,
         stream,
     });
 
@@ -570,11 +572,19 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
   };
 
   const hangUp = () => {
-    peerRef.current?.destroy();
-    socket?.send(JSON.stringify({ to: chatInfo.id, type: 'hangup' }));
+    if (peerRef.current) {
+        peerRef.current.destroy();
+    }
+    if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ to: chatInfo.id, type: 'hangup' }));
+    }
     setCallState(null);
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+    }
     setLocalStream(null);
     setRemoteStream(null);
+    peerRef.current = null;
   };
 
   const handleSend = () => {
@@ -593,6 +603,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chatInfo, onHeaderClick, onRepo
         to: chatInfo.id,
         text: textToSend,
         isGroup: chatInfo.type !== 'Direct Message',
+        groupId: chatInfo.type !== 'Direct Message' ? chatInfo.id : null,
+        from: 'user', // This should be the current user's ID
         timestamp: new Date().toISOString(),
     };
 
