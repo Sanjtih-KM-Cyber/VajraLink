@@ -18,7 +18,7 @@ const ConnectionRequestsView = () => {
 
     const handleApprove = async (id) => {
         await approveConnectionRequest(id);
-        fetchRequests(); // Refresh the list
+        setRequests(current => current.filter(r => r.id !== id));
     };
 
     const handleDeny = async (id) => {
